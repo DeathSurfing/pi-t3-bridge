@@ -40,8 +40,8 @@ Launch all reviewers in a single message using the `Agent` tool. Use the `interr
 |----------|---------------|
 | Reviewer A | `claude-opus-5` |
 | Reviewer B | `claude-fable-5` |
-| Reviewer C | `claude-opus-4-6` |
-| Reviewer D | `claude-sonnet-5` |
+| Reviewer C | `claude-sonnet-5` |
+| Reviewer D | `claude-haiku-4-5` |
 
 For each reviewer:
 - `subagent_type`: `general-purpose`
