@@ -22,6 +22,7 @@ Remaining triggers:
 - Contested design → the **interrogate** skill (multi-model adversarial) before shipping.
 - Nontrivial multi-step → write the throughput checkpoint (Feature step 3).
 - Any prose surface → the **unslop** skill. Your reply is a prose surface; write it per **Writing the reply**. Agent-facing prose also follows the **plugin-dev:skill-development** skill (Claude Code's authoring guidance for SKILL.md files).
+- Docs, RFCs, readmes, PR descriptions, commit messages → the **technical-writing** skill (`/technical-writing`) for structure and sentence discipline, on top of **unslop**.
 - Before commit → the **deslop** skill (`/deslop`).
 - Shipping UI / IDE / CLI → the driver skill (`run` for CLIs/TUIs, `verify` for UIs). Both ship as Claude Code built-ins. For bug fixes, reproduce first on the same surface yourself; hand to the user only under the narrow Bug fix step 1 exception.
 - After opening a PR → the **babysit** skill.
