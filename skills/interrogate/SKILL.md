@@ -1,7 +1,6 @@
 ---
 name: interrogate
 description: "Use for \"interrogate\", \"adversarial review\", \"multi-model review\", \"challenge this\", \"stress test this code\", \"find blind spots\", or \"tear this apart\". Multiple LLM reviewers challenge changes from independent angles."
-menu-description: have three different models try to break a diff
 ---
 
 # Interrogate
@@ -9,8 +8,6 @@ menu-description: have three different models try to break a diff
 Spawn one reviewer per configured model to adversarially review code changes. Each model gets the same prompt and rubric. The adversarial signal comes from model diversity, not assigned personas. Models differ in blind spots, priors, and reasoning patterns. Agreement across models is high-confidence signal; lone-model findings are worth reading but lower confidence.
 
 The deliverable is a synthesized verdict. Do NOT auto-apply changes.
-
-**Platform note.** On Codex, the `subagent_type`/`model`/`readonly` dispatch fields and the `claude-*` model slugs below are Claude defaults. Resolve them via [`codex-tools.md`](../poteto-mode/references/codex-tools.md) (dispatch maps to `spawn_agent`; substitute your configured Codex models, keeping the panel model-diverse).
 
 ## Step 1, Determine Scope
 

@@ -1,7 +1,6 @@
 ---
 name: no-comments
 description: "Spawn the comment-sicko subagent, fix accepted findings, and offer encodings for claimed constraints."
-menu-description: strip comments before review, fix the accepted findings, encode claimed constraints
 ---
 
 # No comments
@@ -9,8 +8,6 @@ menu-description: strip comments before review, fix the accepted findings, encod
 Spawn comment-sicko. Act on accepted findings.
 
 Authoring agents defend comments. Defer to comment-sicko's fresh perspective.
-
-**Platform note.** On Codex, the `comment-sicko` subagent and the Claude tool names below are Claude defaults. Resolve them via [`codex-tools.md`](../poteto-mode/references/codex-tools.md).
 
 ## Scope
 

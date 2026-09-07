@@ -1,14 +1,11 @@
 ---
 name: reflect
 description: Spawn three parallel review subagents over the active transcript, surface learnings, and route each to a concrete edit on an existing skill. Use when the user says reflect.
-menu-description: capture a long task's lessons as a skill edit
 ---
 
 # Reflect
 
 Mine the current conversation for durable learnings, then route them into skill edits.
-
-**Platform note.** On Codex, the Claude tool names, `claude-*` slugs, and Claude built-in skills named below are Claude defaults. Resolve them via [`codex-tools.md`](../poteto-mode/references/codex-tools.md).
 
 ## When to invoke
 

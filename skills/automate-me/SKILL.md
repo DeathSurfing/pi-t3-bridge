@@ -1,7 +1,6 @@
 ---
 name: automate-me
 description: "Use for \"automate me\", \"create/update/refresh my -mode skill\", \"turn/capture my preferences or working style into a skill\", or wanting agents to follow how the user works. Drafts or revises a personal -mode skill via plugin-dev:skill-development + unslop, optionally pulling fresh evidence from recent transcripts."
-menu-description: draft your own personal -mode skill from recent transcripts
 ---
 
 # Automate me
@@ -9,8 +8,6 @@ menu-description: draft your own personal -mode skill from recent transcripts
 A guided flow for turning the user's working conventions into a skill agents will follow. The output is one `-mode` skill tailored to them (e.g. `jay-mode`, `priya-mode`).
 
 This skill orchestrates three others: an inline mining pass (see step 1), the `plugin-dev:skill-development` skill (authoring), and the **unslop** skill (prose discipline). It sequences them; it doesn't replace them.
-
-**Platform note.** On Codex, the Claude tool names, `claude-*` slugs, and Claude built-in skills named below (including `plugin-dev:skill-development`) are Claude defaults. Resolve them via [`codex-tools.md`](../poteto-mode/references/codex-tools.md).
 
 ## Flow
 

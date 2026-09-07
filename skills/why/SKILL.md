@@ -1,7 +1,6 @@
 ---
 name: why
 description: "Use for 'why does X work this way', 'why we picked Y', design rationale, regressions, postmortems, or data-backed thresholds. Discovers available MCPs and queries each evidence category (source control, issue tracker, long-form docs, real-time chat, infrastructure observability, error tracking, product analytics warehouse) in parallel, then returns a cited read on decisions and tradeoffs. Use how for runtime behavior."
-menu-description: investigate why something was built this way (parallel multi-MCP evidence)
 ---
 
 # Why
@@ -9,8 +8,6 @@ menu-description: investigate why something was built this way (parallel multi-M
 Investigate the motivation and intent behind code. Why was it built this way? What edge cases were considered? What product, business, or operational constraints shaped the design? What alternatives were rejected, and why?
 
 Companion to the `how` skill. `how` answers what the code does and how it works. `why` answers what forces led to its shape.
-
-**Platform note.** On Codex, the Claude tool names and `claude-*` slugs named below are Claude defaults. Resolve them via [`codex-tools.md`](../poteto-mode/references/codex-tools.md).
 
 ## How this skill works
 
