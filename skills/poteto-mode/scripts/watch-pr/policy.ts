@@ -181,17 +181,26 @@ function gateReason(
   if (row.kind === "merged") return null;
   if (row.kind === "closed") return "closed-without-merge";
   if (row.facts.isDraft && !allowDraft) return "draft-pr";
-  return row.facts.reviewDecision === "CHANGES_REQUESTED"
-    ? "changes-requested"
-    : null;
+  if (row.facts.reviewDecision === "CHANGES_REQUESTED")
+    return "changes-requested";
+  if (row.facts.reviewDecision === "REVIEW_REQUIRED") return "review-required";
+  // BLOCKED with clean CI is some other branch protection rule, such as signed
+  // commits or a required check that never reported. GitHub will not merge it.
+  return row.facts.mergeStateStatus === "BLOCKED" ? "merge-blocked" : null;
 }
+// Gates that pending checks can still explain wait for the checks first.
+const DEFERRED_WHILE_PENDING: ReadonlySet<T.MergeGateReason> = new Set([
+  "draft-pr",
+  "review-required",
+  "merge-blocked",
+]);
 function gateBlocker(
   row: T.PrSnapshot,
   allowDraft: boolean,
 ): T.MergeBlocker | null {
   const reason = gateReason(row, allowDraft);
   return reason === null ||
-    (reason === "draft-pr" &&
+    (DEFERRED_WHILE_PENDING.has(reason) &&
       row.kind === "open" &&
       row.ci.kind === "ci-pending")
     ? null
@@ -216,7 +225,11 @@ function readyContribution(
   )
     return null;
   const reviewDecision = row.facts.reviewDecision;
-  if (reviewDecision === "CHANGES_REQUESTED") return null;
+  if (
+    reviewDecision === "CHANGES_REQUESTED" ||
+    reviewDecision === "REVIEW_REQUIRED"
+  )
+    return null;
   return {
     kind: "ready-pr",
     context: row.context,
