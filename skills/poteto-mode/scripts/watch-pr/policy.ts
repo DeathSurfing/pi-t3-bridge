@@ -1,6 +1,6 @@
-import { sameLandingRevision } from "./landing.ts";
+import { landingRevision, sameLandingRevision } from "./landing.ts";
 import { WatcherQueryError, resolveChecks } from "./github.ts";
-import { DeadlineExceeded, WatchDeadline } from "./deadline.ts";
+import { DeadlineExceeded, type WatchDeadline } from "./deadline.ts";
 import type * as T from "./types.ts";
 import { nonEmpty } from "./types.ts";
 export function assessGitHubMerge(args: {
@@ -68,13 +68,6 @@ export async function readSnapshot(args: {
     return { kind: "merged", context: args.context, facts };
   if (facts.state === "CLOSED")
     return { kind: "closed", context: args.context, facts };
-  const { headRefOid, baseRefOid } = facts;
-  if (!headRefOid || !baseRefOid)
-    throw new WatcherQueryError({
-      kind: "snapshot-changed",
-      retryable: true,
-      detail: "open PR has no head or base commit",
-    });
   const [threads, checks] = await Promise.all([
     args.reader.reviewThreads(args.context),
     resolveChecks(args.reader, args.context),
@@ -134,16 +127,16 @@ export async function readSnapshot(args: {
       };
   }
   const revision = await args.reader.revision(args.context);
-  if (!sameLandingRevision({ ...facts, headRefOid, baseRefOid }, revision))
+  if (!sameLandingRevision(facts, revision))
     throw new WatcherQueryError({
       kind: "snapshot-changed",
       retryable: true,
-      detail: `PR head or destination changed while collecting ${headRefOid} against ${facts.baseRefName}`,
+      detail: `PR head or destination changed while collecting ${facts.headRefOid} against ${facts.baseRefName}`,
     });
   return {
     kind: "open",
     context: args.context,
-    facts: { ...facts, headRefOid, baseRefOid },
+    facts,
     threads,
     ci,
     reviewAutomationRunning: checks.checks.some(
@@ -234,12 +227,7 @@ function readyContribution(
     kind: "ready-pr",
     context: row.context,
     proof: {
-      revision: {
-        context: row.context,
-        headRefOid: row.facts.headRefOid,
-        baseRefName: row.facts.baseRefName,
-        baseRefOid: row.facts.baseRefOid,
-      },
+      revision: landingRevision(row.facts),
       mergeability: "clear",
       threads: [],
       ci: row.ci,
@@ -381,7 +369,7 @@ export interface WatchClock {
   sleep(seconds: number): Promise<void>;
 }
 export interface RunDependencies {
-  readonly deadline?: WatchDeadline;
+  readonly deadline: WatchDeadline;
   readonly reader: T.GitHubReader;
   readonly clock: WatchClock;
   readonly emit: (verdict: T.ProgressVerdict) => void;
@@ -406,7 +394,7 @@ type StepResult<V> =
   | {
       readonly kind: "sleep";
       readonly seconds: number;
-      readonly onDeadline?: () => V;
+      readonly onDeadline: () => V;
     }
   | { readonly kind: "continue" };
 async function pollUntilTerminal<V>(args: {
@@ -416,21 +404,16 @@ async function pollUntilTerminal<V>(args: {
   readonly step: () => Promise<StepResult<V>>;
 }): Promise<V | T.BlockerVerdict | T.TimeoutVerdict> {
   let failures = 0;
-  const deadline =
-    args.dependencies.deadline ??
-    new WatchDeadline(args.options.timeout, () =>
-      args.dependencies.clock.now()
-    );
+  const { deadline } = args.dependencies;
   let onDeadline: () => V | T.TimeoutVerdict = () =>
     deadlineVerdict(args.stamp);
-  while (true) {
-    if (deadline.remaining() === 0) return onDeadline();
+  while (deadline.remaining() > 0) {
     let result: StepResult<V>;
     try {
       result = await args.step();
       failures = 0;
     } catch (error) {
-      if (error instanceof DeadlineExceeded) return onDeadline();
+      if (error instanceof DeadlineExceeded) break;
       if (!(error instanceof WatcherQueryError)) throw error;
       onDeadline = () =>
         args.stamp({
@@ -439,7 +422,6 @@ async function pollUntilTerminal<V>(args: {
           exitCode: 5,
           reason: { kind: "status-unavailable", failure: error.failure },
         });
-      if (deadline.remaining() === 0) return onDeadline();
       failures += 1;
       if (!error.failure.retryable || failures >= args.options.maxQueryErrors)
         return statusQueryVerdict(args.stamp, failures, error.failure);
@@ -461,12 +443,13 @@ async function pollUntilTerminal<V>(args: {
     }
     if (result.kind === "terminal") return result.verdict;
     if (result.kind === "sleep") {
-      onDeadline = result.onDeadline ?? (() => deadlineVerdict(args.stamp));
+      onDeadline = result.onDeadline;
       await args.dependencies.clock.sleep(
         Math.min(result.seconds, deadline.remaining())
       );
     }
   }
+  return onDeadline();
 }
 export async function runSimple(args: {
   readonly dependencies: RunDependencies;

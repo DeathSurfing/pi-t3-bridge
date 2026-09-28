@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { DeadlineExceeded, WatchDeadline } from "./deadline.ts";
 import { fakeReader, pendingCheck, failedCheck } from "./fakes.test-helper.ts";
 import type { FakeReaderOptions } from "./fakes.test-helper.ts";
-import { orderStack, WatcherQueryError } from "./github.ts";
+import { orderStack, parsePullRequest, WatcherQueryError } from "./github.ts";
 import { classifyPr, readSnapshot, runSimple, runQueued } from "./policy.ts";
-import { parsePrNumber } from "./types.ts";
+import { renderPretty } from "./render.ts";
+import { parsePrNumber, type ProgressVerdict } from "./types.ts";
 
 const context = { owner: "owner", repo: "repo", number: parsePrNumber(1) };
 const options = {
@@ -13,6 +15,7 @@ const options = {
   maxQueryErrors: 5,
   allowDraft: false,
 };
+const unbounded = new WatchDeadline(0, () => 0);
 const snapshotArgs = {
   context,
   pendingHistory: "include" as const,
@@ -20,6 +23,41 @@ const snapshotArgs = {
 };
 
 describe("commit identity", () => {
+  const rawPullRequest = {
+    mergeable: "MERGEABLE",
+    mergeStateStatus: "CLEAN",
+    reviewDecision: "APPROVED",
+    headRefOid: "head",
+    baseRefOid: "base",
+    headRefName: "feature",
+    baseRefName: "main",
+    state: "OPEN",
+    mergedAt: null,
+    isDraft: false,
+  };
+
+  it("rejects an open PR without a head or base commit where it is parsed", () => {
+    for (const missing of [{ headRefOid: null }, { baseRefOid: "" }])
+      expect(() =>
+        parsePullRequest({ ...rawPullRequest, ...missing }, context)
+      ).toThrow(WatcherQueryError);
+  });
+
+  it("accepts a merged PR whose head and base commits are gone", () => {
+    expect(
+      parsePullRequest(
+        {
+          ...rawPullRequest,
+          state: "MERGED",
+          mergedAt: "2026-07-26T00:00:00Z",
+          headRefOid: null,
+          baseRefOid: null,
+        },
+        context
+      )
+    ).toMatchObject({ state: "MERGED", headRefOid: null, baseRefOid: null });
+  });
+
   it("rejects a missing expected commit instead of treating it as a null rollup", async () => {
     const reader = fakeReader({
       facts: { headRefOid: "old", mergeStateStatus: "BLOCKED" },
@@ -125,11 +163,12 @@ describe("commit identity", () => {
         reader,
         emit() {},
         clock: { now: () => 0, observedAt: () => "fixture", async sleep() {} },
+        deadline: unbounded,
       },
       contexts: [context],
       mode: "single",
       statusOnly: false,
-      options: { ...options, timeout: 0, maxQueryErrors: 1 },
+      options: { ...options, maxQueryErrors: 1 },
     });
     expect(verdict).toMatchObject({
       kind: "BLOCKER",
@@ -155,11 +194,12 @@ describe("commit identity", () => {
         reader,
         emit() {},
         clock: { now: () => 0, observedAt: () => "fixture", async sleep() {} },
+        deadline: unbounded,
       },
       contexts: [context],
       mode: "single",
       statusOnly: false,
-      options: { ...options, timeout: 0 },
+      options,
     });
     expect(reads).toBe(2);
     expect(verdict).toMatchObject({
@@ -306,6 +346,7 @@ describe("deadline", () => {
             now += seconds;
           },
         },
+        deadline: new WatchDeadline(options.timeout, () => now),
       };
       const result =
         mode === "single"
@@ -352,6 +393,7 @@ describe("deadline", () => {
             now += seconds;
           },
         },
+        deadline: new WatchDeadline(options.timeout, () => now),
       },
       contexts: [context],
       mode: "single",
@@ -364,19 +406,25 @@ describe("deadline", () => {
   });
 
   function dependenciesWithReadOutlivingBudget(
-    readerOptions: FakeReaderOptions = {}
+    readerOptions: FakeReaderOptions = {},
+    failure?: () => Error
   ) {
     let now = 0;
     const base = fakeReader(readerOptions);
+    const emitted: ProgressVerdict[] = [];
     return {
       reader: {
         ...base,
         async pullRequest(requested: typeof context) {
           now += 2;
+          if (failure !== undefined) throw failure();
           return base.pullRequest(requested);
         },
       },
-      emit() {},
+      emitted,
+      emit(verdict: ProgressVerdict) {
+        emitted.push(verdict);
+      },
       clock: {
         now: () => now,
         observedAt: () => "fixture",
@@ -384,8 +432,69 @@ describe("deadline", () => {
           now += seconds;
         },
       },
+      deadline: new WatchDeadline(options.timeout, () => now),
     };
   }
+  const commandExit = () =>
+    new WatcherQueryError({
+      kind: "command-exit",
+      retryable: true,
+      code: 1,
+      detail: "fixture",
+    });
+  const single = {
+    contexts: [context],
+    mode: "single",
+    statusOnly: false,
+  } as const;
+
+  it("times out with the read failure when a retryable read fails past the deadline", async () => {
+    const dependencies = dependenciesWithReadOutlivingBudget({}, commandExit);
+    const result = await runSimple({ ...single, dependencies, options });
+    expect(result).toMatchObject({
+      kind: "TIMEOUT",
+      reason: {
+        kind: "status-unavailable",
+        failure: { kind: "command-exit" },
+      },
+    });
+    expect(dependencies.emitted).toMatchObject([
+      { kind: "RETRY", retryInSeconds: 0 },
+    ]);
+    expect(dependencies.clock.now()).toBe(2);
+  });
+
+  it("reports the status-query blocker when a read past the deadline exhausts the error budget", async () => {
+    const result = await runSimple({
+      ...single,
+      dependencies: dependenciesWithReadOutlivingBudget({}, commandExit),
+      options: { ...options, maxQueryErrors: 1 },
+    });
+    expect(result).toMatchObject({
+      kind: "BLOCKER",
+      exitCode: 7,
+      blocker: { kind: "status-query", failures: 1 },
+    });
+  });
+
+  it("times out without retrying a cancelled command, even while the loop budget has time left", async () => {
+    let cancellations = 0;
+    const dependencies = dependenciesWithReadOutlivingBudget({}, () =>
+      ++cancellations > 1
+        ? new Error("read again after cancellation")
+        : new DeadlineExceeded()
+    );
+    const result = await runSimple({
+      ...single,
+      dependencies: { ...dependencies, deadline: unbounded },
+      options,
+    });
+    expect(result).toMatchObject({
+      kind: "TIMEOUT",
+      reason: { kind: "status-unavailable", failure: { kind: "deadline" } },
+    });
+    expect(cancellations).toBe(1);
+  });
 
   it("reports a READY observation that completes past the deadline", async () => {
     const result = await runSimple({
@@ -453,9 +562,10 @@ it("keeps queued pending checks waiting and stops when they fail without advanci
           failed = true;
         },
       },
+      deadline: unbounded,
     },
     contexts: [context],
-    options: { ...options, timeout: 0 },
+    options,
   });
   expect(events).toContain("WAITING");
   expect(events).not.toContain("ADVANCE");
@@ -464,4 +574,124 @@ it("keeps queued pending checks waiting and stops when they fail without advanci
     kind: "BLOCKER",
     blocker: { kind: "failing-checks" },
   });
+});
+
+describe("merge gate", () => {
+  const cases: readonly [
+    string,
+    FakeReaderOptions["facts"],
+    boolean,
+    ReturnType<typeof classifyPr>,
+  ][] = [
+    [
+      "closed",
+      { state: "CLOSED" },
+      false,
+      {
+        kind: "blocker",
+        blocker: {
+          kind: "merge-gate",
+          pr: context,
+          reason: "closed-without-merge",
+        },
+      },
+    ],
+    [
+      "draft",
+      { isDraft: true, reviewDecision: "CHANGES_REQUESTED" },
+      false,
+      {
+        kind: "blocker",
+        blocker: { kind: "merge-gate", pr: context, reason: "draft-pr" },
+      },
+    ],
+    [
+      "changes requested",
+      { reviewDecision: "CHANGES_REQUESTED", mergeStateStatus: "BLOCKED" },
+      true,
+      {
+        kind: "blocker",
+        blocker: {
+          kind: "merge-gate",
+          pr: context,
+          reason: "changes-requested",
+        },
+      },
+    ],
+    [
+      "review required",
+      { reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED" },
+      false,
+      {
+        kind: "blocker",
+        blocker: { kind: "merge-gate", pr: context, reason: "review-required" },
+      },
+    ],
+    [
+      "branch protection",
+      { mergeStateStatus: "BLOCKED" },
+      false,
+      {
+        kind: "blocker",
+        blocker: { kind: "merge-gate", pr: context, reason: "merge-blocked" },
+      },
+    ],
+  ];
+  for (const [name, facts, allowDraft, expected] of cases)
+    it(`blocks a ${name} PR with its gate reason`, async () => {
+      const row = await readSnapshot({
+        ...snapshotArgs,
+        reader: fakeReader({ facts }),
+      });
+      expect(classifyPr(row, allowDraft)).toEqual(expected);
+    });
+
+  for (const [isDraft, allowDraft, reviewDecision, draft] of [
+    [false, false, "APPROVED", "not-draft"],
+    [true, true, null, "draft-allowed"],
+  ] as const)
+    it(`proves an open gate with review ${reviewDecision} and ${draft}`, async () => {
+      const row = await readSnapshot({
+        ...snapshotArgs,
+        reader: fakeReader({ facts: { isDraft, reviewDecision } }),
+      });
+      expect(classifyPr(row, allowDraft)).toMatchObject({
+        kind: "ready",
+        pr: { proof: { gate: { state: "OPEN", reviewDecision, draft } } },
+      });
+    });
+
+  for (const [reason, action] of [
+    [
+      "closed-without-merge",
+      "restore or remove the closed PR from the queued stack",
+    ],
+    [
+      "draft-pr",
+      "mark the PR ready for review before waiting for the merge queue",
+    ],
+    [
+      "changes-requested",
+      "resolve the changes-requested review before waiting for the merge queue",
+    ],
+    ["review-required", "get the required approving review"],
+    [
+      "merge-blocked",
+      "find the branch protection rule holding the merge (mergeStateStatus=BLOCKED with clean CI)",
+    ],
+  ] as const)
+    it(`renders the ${reason} action`, () => {
+      expect(
+        renderPretty({
+          schemaVersion: 1,
+          sequence: 1,
+          observedAt: "fixture",
+          mode: "single",
+          kind: "BLOCKER",
+          terminal: true,
+          exitCode: 6,
+          blocker: { kind: "merge-gate", pr: context, reason },
+        })
+      ).toBe(`BLOCKER: ${reason}\npr=1\naction=${action}\n`);
+    });
 });
