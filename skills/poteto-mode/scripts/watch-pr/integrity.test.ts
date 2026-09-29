@@ -3,9 +3,28 @@ import { DeadlineExceeded, WatchDeadline } from "./deadline.ts";
 import { fakeReader, pendingCheck, failedCheck } from "./fakes.test-helper.ts";
 import type { FakeReaderOptions } from "./fakes.test-helper.ts";
 import { orderStack, parsePullRequest, WatcherQueryError } from "./github.ts";
-import { classifyPr, readSnapshot, runSimple, runQueued } from "./policy.ts";
+import {
+  flag,
+  nullableText,
+  object,
+  oneOf,
+  parseContext,
+  parseLandingRevision,
+  text,
+} from "./landing.ts";
+import {
+  classifyPr,
+  readSnapshot,
+  runSimple,
+  runQueued,
+  selectTierMajorStackDecision,
+} from "./policy.ts";
 import { renderPretty } from "./render.ts";
-import { parsePrNumber, type ProgressVerdict } from "./types.ts";
+import {
+  parsePrNumber,
+  type MergeBlocker,
+  type ProgressVerdict,
+} from "./types.ts";
 
 const context = { owner: "owner", repo: "repo", number: parsePrNumber(1) };
 const options = {
@@ -694,4 +713,151 @@ describe("merge gate", () => {
         })
       ).toBe(`BLOCKER: ${reason}\npr=1\naction=${action}\n`);
     });
+});
+
+describe("blocker producers", () => {
+  const thread = {
+    id: "t1",
+    firstComment: null,
+    isBugbot: false,
+    bugbotReviewPasses: 0,
+  };
+  const rungs: readonly (readonly [MergeBlocker["kind"], FakeReaderOptions])[] =
+    [
+      ["merge-conflicts", { facts: { mergeable: "CONFLICTING" } }],
+      ["review-threads", { threads: [thread] }],
+      [
+        "failing-checks",
+        { fastPath: { kind: "checks", checks: [failedCheck()] } },
+      ],
+      ["merge-gate", { facts: { isDraft: true } }],
+    ];
+  const snapshot = (options: FakeReaderOptions, number: number) => {
+    const pr = { ...context, number: parsePrNumber(number) };
+    return readSnapshot({
+      ...snapshotArgs,
+      context: pr,
+      reader: fakeReader({ ...options, current: pr }),
+    });
+  };
+
+  for (const [index, [kind]] of rungs.entries()) {
+    it(`classifies a PR as ${kind} over every lower-priority blocker`, async () => {
+      let options: FakeReaderOptions = {};
+      for (const [, rung] of rungs.slice(index))
+        options = {
+          ...options,
+          ...rung,
+          facts: { ...options.facts, ...rung.facts },
+        };
+      expect(classifyPr(await snapshot(options, 1))).toMatchObject({
+        kind: "blocker",
+        blocker: { kind },
+      });
+    });
+
+    it(`reports ${kind} in a stack before any lower tier in an earlier PR`, async () => {
+      const rows = await Promise.all(
+        rungs
+          .slice(index)
+          .map(([, options], offset) => snapshot(options, index + offset + 1))
+      );
+      const [first, ...rest] = rows.reverse();
+      expect(selectTierMajorStackDecision([first, ...rest])).toMatchObject({
+        kind: "blocker",
+        blocker: { kind, pr: { number: index + 1 } },
+      });
+    });
+  }
+});
+
+describe("landing validators", () => {
+  const failure = (parse: () => unknown) => {
+    try {
+      parse();
+    } catch (error) {
+      if (error instanceof WatcherQueryError) return error.failure;
+      throw error;
+    }
+    throw new Error("expected a validation failure");
+  };
+  for (const [name, parse, detail] of [
+    [
+      "object",
+      () => object([], "landing record"),
+      "landing record must be an object",
+    ],
+    [
+      "text",
+      () => text("", "headRefOid"),
+      "headRefOid must be a non-empty string",
+    ],
+    [
+      "nullableText",
+      () => nullableText(0, "queue entry id"),
+      "queue entry id must be a non-empty string",
+    ],
+    [
+      "oneOf",
+      () => oneOf("DRAFT", ["OPEN"], "PR state"),
+      "missing or invalid PR state",
+    ],
+    ["flag", () => flag(null, "autoMerge state"), "missing autoMerge state"],
+    [
+      "parseContext",
+      () => parseContext({ owner: "a/b", repo: "r", number: 1 }),
+      "owner and repo must be individual repository names",
+    ],
+    [
+      "parseLandingRevision",
+      () =>
+        parseLandingRevision(
+          { headRefOid: "head", baseRefName: "main" },
+          context
+        ),
+      "baseRefOid must be a non-empty string",
+    ],
+  ] as const)
+    it(`${name} rejects with a retryable missing-key failure`, () => {
+      expect(failure(parse)).toEqual({
+        kind: "missing-key",
+        retryable: true,
+        detail,
+      });
+    });
+
+  it("returns valid values unchanged", () => {
+    const fields = { key: 1 };
+    expect(object(fields, "fields")).toBe(fields);
+    expect(text("head", "headRefOid")).toBe("head");
+    expect(nullableText(null, "queue entry id")).toBeNull();
+    expect(oneOf("MERGED", ["OPEN", "MERGED"], "PR state")).toBe("MERGED");
+    expect(flag(false, "autoMerge state")).toBe(false);
+  });
+
+  it("reports an open PR's missing head commit as its own failure", () => {
+    expect(
+      failure(() =>
+        parsePullRequest(
+          {
+            mergeable: "MERGEABLE",
+            mergeStateStatus: "CLEAN",
+            reviewDecision: "APPROVED",
+            headRefOid: null,
+            baseRefOid: "base",
+            headRefName: "feature",
+            baseRefName: "main",
+            state: "OPEN",
+            mergedAt: null,
+            isDraft: false,
+          },
+          context
+        )
+      )
+    ).toEqual({
+      kind: "missing-key",
+      retryable: true,
+      detail: "headRefOid must be a non-empty string",
+    });
+  });
 });
