@@ -11,7 +11,7 @@ case "${1:-}" in
     ;;
 esac
 
-if grep -qs '^session hook: off$' "$sheet"; then
+if [ -r "$sheet" ] && tr -d '\r' <"$sheet" | grep -qx 'session hook: off'; then
   exit 0
 fi
 
