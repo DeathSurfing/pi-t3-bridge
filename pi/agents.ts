@@ -153,7 +153,7 @@ export class AgentRunner {
 
   start(params: AgentParams, ctx: ExtensionContext): RunningRecord {
     const type = params.subagent_type || GENERAL_PURPOSE;
-    const types = loadAgentTypes(this.settings.pluginRoot);
+    const types = loadAgentTypes(this.settings);
     const def = types.get(type);
     if (!def) throw new Error(`Unknown subagent_type "${type}". Valid types: ${[...types.keys()].join(", ")}.`);
     const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
@@ -202,7 +202,7 @@ export class AgentRunner {
     const child = new PiChild(
       command,
       [...args, ...childArgs(identity, this.settings.depth)],
-      { cwd: identity.cwd, env: this.settings.childEnv, exitGraceMs: this.settings.exitGraceMs },
+      { cwd: identity.cwd, exitGraceMs: this.settings.exitGraceMs },
       prompt,
     );
     const record: RunningRecord = { agent: identity, status: "running", pid: child.pid, parentPid: process.pid };
