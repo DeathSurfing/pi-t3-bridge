@@ -1164,11 +1164,15 @@ function branchSha({
 }): string {
   let raw: string;
   try {
-    raw = execFileSync("git", ["rev-parse", branch], {
-      cwd: repo,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    raw = execFileSync(
+      "git",
+      ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`],
+      {
+        cwd: repo,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
   } catch (error) {
     throw new UserError(
       `git rev-parse ${branch} failed: ${errorMessage(error)}`
