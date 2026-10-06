@@ -35,14 +35,16 @@ const bind = (fact, next) => (fact.known ? next(fact.value) : UNKNOWN);
 
 const DAY = 86400;
 const RECENT_DAYS = 4;
-const HEADER = ["SIZE", "AGE", "MERGED", "DIRTY", "REMOTE", "PR", "LAST_CHAT", "BUCKET", "WORKTREE"];
+const HEADER = ["SIZE", "AGE", "MERGED", "DIRTY", "REMOTE", "PR", "LAST_CHAT", "BUCKET", "LOCKED", "WORKTREE"];
 // Merged and closed PRs drop out of gh's default open-only listing.
 const GH_PR_LIST = ["pr", "list", "--author", "@me", "--state", "all", "--limit", "1000",
   "--json", "number,state,headRefName,headRefOid"];
 
 export function classify(facts) {
-  const { dirty, pr, recent, ancestry, head } = facts;
+  const { locked, dirty, pr, recent, ancestry, head } = facts;
+  if (locked.known && locked.value !== null) return "hold-locked";
   if (dirty.known && dirty.value.wip > 0) return "hold-wip";
+  if (dirty.known && dirty.value.untracked > 0) return "hold-untracked";
   if (pr.known && pr.value?.state === "OPEN") return "hold-open-pr";
   if (recent.known && recent.value) return "verify-recent-chat";
   if (Object.values(facts).some((fact) => !fact.known)) return "review";
@@ -51,8 +53,9 @@ export function classify(facts) {
   return "review";
 }
 
+// The default 1 MiB buffer fails a status that lists several thousand untracked files.
 function git(cwd, ...args) {
-  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: Infinity })
     .replace(/\n+$/, "");
 }
 
@@ -64,8 +67,9 @@ const runGh = (args, cwd) =>
 export function parseWorktrees(output) {
   const worktrees = [];
   for (const field of output.split("\0")) {
-    if (field.startsWith("worktree ")) worktrees.push({ path: field.slice("worktree ".length), prunable: false });
+    if (field.startsWith("worktree ")) worktrees.push({ path: field.slice("worktree ".length), prunable: false, locked: null });
     else if (field.startsWith("prunable")) worktrees.at(-1).prunable = true;
+    else if (field.startsWith("locked")) worktrees.at(-1).locked = field.slice("locked ".length);
   }
   return worktrees;
 }
@@ -80,15 +84,27 @@ export function defaultTranscriptRoots({ env = process.env, home = homedir(), ex
   return found.length ? found : [claude];
 }
 
-// A dangling or looping link cannot spell a path that exists. Any other failure
-// propagates so the caller leaves the worktree's chat fact unknown.
-function symlinkTargets(dir) {
+// APFS inode numbers pass 2^53, where two of them read as one number.
+const fileId = (path, stat) => {
+  const { dev, ino } = stat(path, { bigint: true });
+  return `${dev}:${ino}`;
+};
+
+// A link is known by the identity stat reports for what it lands on, and by
+// the name realpathSync gives it when it gives one. The name alone misses
+// links: node resolves `..` in a target before the links in it and keeps a
+// firmlink route as written, and bun opens the target to name it, which macOS
+// refuses for its autofs /home. A dangling or looping link (ENOENT, ELOOP)
+// spells nothing. When stat fails any other way the route is closed to this
+// process and the link could land anywhere, so the error propagates and the
+// caller leaves the worktree's chat fact unknown.
+export function symlinkTargets(dir, stat = statSync) {
   return readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isSymbolicLink()).flatMap((entry) => {
     const link = join(dir, entry.name);
     try {
-      return [[link, realpathSync(link)]];
+      return [[link, { id: fileId(link, stat), name: probe(() => realpathSync(link)).value }]];
     } catch (error) {
-      if (error.code === "ENOENT" || error.code === "ELOOP") return [];
+      if (["ENOENT", "ELOOP"].includes(error.code)) return [];
       throw error;
     }
   });
@@ -98,7 +114,7 @@ function symlinkTargets(dir) {
 // through a symlink in an ancestor directory, as macOS spells /private/tmp/x
 // as /tmp/x, or through several, as /tmp/link/x when /private/tmp/link points
 // at /private/tmp/real. A worktree whose directory is gone keeps git's spelling.
-export function pathSpellings(path, linksIn = symlinkTargets) {
+export function pathSpellings(path, linksIn = symlinkTargets, stat = statSync) {
   let resolved;
   try {
     resolved = realpathSync(path);
@@ -111,13 +127,18 @@ export function pathSpellings(path, linksIn = symlinkTargets) {
     ancestors.unshift(dir);
     if (dir === dirname(dir)) break;
   }
-  const links = ancestors.flatMap((dir) => linksIn(dir).map(([link, target]) => [dir, link, target]));
+  const onPath = [...ancestors, resolved];
+  // A link lands on every directory that it names or that shares its identity:
+  // a filesystem may report one identity for several, and a spare spelling
+  // costs a hold where a missed one can cost the worktree.
+  const links = ancestors.flatMap((dir) => linksIn(dir).flatMap(([link, { id, name }]) =>
+    onPath.filter((target) => target === name || fileId(target, stat) === id).map((target) => [dir, link, target])));
   // Spell each directory from the root down, so a link's own directory is
   // already spelled when the link is applied. A link back up to an ancestor of
   // its directory is applied through that directory's resolved spelling only,
   // which keeps the set finite.
   const spelled = new Map();
-  for (const dir of [...ancestors, resolved]) {
+  for (const dir of onPath) {
     const parent = dirname(dir);
     const forms = new Set(parent === dir ? [dir] : spelled.get(parent).map((form) => join(form, basename(dir))));
     for (const [home, link, target] of links) {
@@ -134,8 +155,9 @@ export function pathSpellings(path, linksIn = symlinkTargets) {
 // JSON-escaped and a `\` after it opens the escape of a quote, backslash, or
 // control byte. `.` counts only before another boundary (a sentence-final
 // path), because `/x/candidate.bak` is a plausible sibling. `*`, `$`, and `{`
-// stay out: they extend a path by glob or expansion.
-const BOUNDARY = new Set(Buffer.from("/\\\"' `:;),|&<>]}"));
+// stay out: they extend a path by glob or expansion. `?` globs too, but it
+// also ends a question or a URL's path, and a false match costs only a hold.
+const BOUNDARY = new Set(Buffer.from("/\\\"' `:;),|&<>]}?!"));
 const DOT = ".".charCodeAt(0);
 const bounded = (text, at) => at === text.length || BOUNDARY.has(text[at]);
 function mentions(text, needle) {
@@ -194,9 +216,9 @@ function isAncestor(repo, head, trunk) {
 }
 
 function dirtyState(path) {
-  const lines = git(path, "status", "--porcelain").split("\n").filter(Boolean);
-  const scratch = lines.filter((line) => line.startsWith("??")).length;
-  return { wip: lines.length - scratch, scratch };
+  const lines = git(path, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none").split("\n").filter(Boolean);
+  const untracked = lines.filter((line) => line.startsWith("??")).length;
+  return { wip: lines.length - untracked, untracked };
 }
 
 function remoteState(path, branch, head) {
@@ -225,12 +247,17 @@ function sizeKey(label) {
   return Number(match[1]) * 1024 ** (match[2] ? "KMGTPE".indexOf(match[2]) + 1 : 0);
 }
 
-function dirtyLabel({ wip, scratch }) {
-  if (wip > 0) return `wip:${wip}`;
-  return scratch > 0 ? `scratch:${scratch}` : "clean";
+function dirtyLabel({ wip, untracked }) {
+  return [wip > 0 && `wip:${wip}`, untracked > 0 && `untracked:${untracked}`].filter(Boolean).join(",") || "clean";
 }
 
-function auditWorktree(path, { repo, trunk, fetched, prs, chats, now }) {
+// `--porcelain -z` hands over the lock reason raw, newlines included.
+function lockedLabel(locked) {
+  if (locked === null) return "-";
+  return locked.replace(/\s+/g, " ").trim() || "locked";
+}
+
+function auditWorktree({ path, locked }, { repo, trunk, fetched, prs, chats, now }) {
   const head = probe(() => git(path, "rev-parse", "HEAD"));
   const age = bind(head, () => probe(() => Math.trunc((now - Number(git(path, "log", "-1", "--format=%ct", "HEAD"))) / DAY)));
   const ancestry = bind(head, (sha) => probe(() => isAncestor(repo, sha, trunk)));
@@ -243,7 +270,7 @@ function auditWorktree(path, { repo, trunk, fetched, prs, chats, now }) {
   const pr = bind(prs, (list) => bind(branch, (name) => known(list.find((entry) => name !== null && entry.headRefName === name) ?? null)));
   const lastChat = chats.get(path);
   const recent = bind(lastChat, (ts) => known(ts !== null && Math.trunc((now - ts) / DAY) <= RECENT_DAYS));
-  const bucket = classify({ trunk: fetched, head, age, ancestry, dirty, remote, pr, recent });
+  const bucket = classify({ trunk: fetched, head, age, ancestry, dirty, remote, pr, recent, locked: known(locked) });
   return [
     size(path),
     age.known ? `${age.value}d` : "?",
@@ -253,6 +280,7 @@ function auditWorktree(path, { repo, trunk, fetched, prs, chats, now }) {
     pr.known && pr.value ? `#${pr.value.number}/${pr.value.state}` : "-",
     lastChat.known && lastChat.value !== null ? new Date(lastChat.value * 1000).toISOString().slice(0, 10) : "-",
     bucket,
+    lockedLabel(locked),
     path,
   ];
 }
@@ -313,8 +341,10 @@ export function audit({
   ]));
 
   const context = { repo, trunk, fetched, prs, chats, now };
-  const rows = worktrees.map(({ path, prunable }) =>
-    prunable ? ["-", "?", "-", "-", "-", "-", "-", "prunable", path] : auditWorktree(path, context),
+  const rows = worktrees.map((worktree) =>
+    worktree.prunable
+      ? ["-", "?", "-", "-", "-", "-", "-", "prunable", "-", worktree.path]
+      : auditWorktree(worktree, context),
   );
   rows.sort((a, b) => sizeKey(b[0]) - sizeKey(a[0]) || (a.join("\t") < b.join("\t") ? 1 : -1));
   return [HEADER, ...rows].map((row) => `${row.join("\t")}\n`).join("");
