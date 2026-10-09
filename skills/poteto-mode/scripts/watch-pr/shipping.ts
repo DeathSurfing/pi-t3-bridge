@@ -1,4 +1,5 @@
 import {
+  baseRefTargetOid,
   flag,
   nullableText,
   object,
@@ -117,7 +118,8 @@ export async function cancelPending(
 const INSPECT_QUERY = `query Landing($owner:String!,$repo:String!,$pr:Int!) {
   repository(owner:$owner,name:$repo) {
     pullRequest(number:$pr) {
-      id state headRefOid baseRefName baseRefOid
+      id state headRefOid baseRefName
+      baseRef { target { oid } }
       autoMergeRequest { enabledAt }
       mergeQueueEntry { id }
       mergeCommit { oid }
@@ -175,7 +177,15 @@ export class GhShippingService implements ShippingService {
             "queue entry id"
           );
     return {
-      revision: parseLandingRevision(fields, context),
+      revision: {
+        context,
+        headRefOid: text(fields.headRefOid, "headRefOid"),
+        baseRefName: text(fields.baseRefName, "baseRefName"),
+        baseRefOid: text(
+          baseRefTargetOid(fields.baseRef),
+          "baseRef.target.oid"
+        ),
+      },
       pullRequestId: text(fields.id, "pull request id"),
       state: oneOf(fields.state, STATES, "PR state"),
       pending: { autoMerge, queueEntryId },

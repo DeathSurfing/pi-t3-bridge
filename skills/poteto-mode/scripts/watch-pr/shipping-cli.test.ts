@@ -30,7 +30,7 @@ function fixture(
       state: "OPEN",
       headRefOid: "head",
       baseRefName: "main",
-      baseRefOid: "base",
+      baseRef: { target: { oid: "base" } },
       autoMergeRequest: { enabledAt: "now" },
       mergeQueueEntry: { id: "queue" },
       mergeCommit: null,
@@ -106,7 +106,7 @@ it("the CLI refuses a changed base without cancelling anything", () =>
     writeFileSync(saved, JSON.stringify(inspected.output));
     const changed = {
       ...JSON.parse(readFileSync(file, "utf8")),
-      baseRefOid: "advanced",
+      baseRef: { target: { oid: "advanced" } },
     };
     writeFileSync(file, JSON.stringify(changed));
     const result = run("cancel-pending", "--record", saved);
