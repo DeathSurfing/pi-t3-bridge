@@ -1,0 +1,220 @@
+{
+  "inheritedProviderInstanceId": "pi",
+  "inheritedModel": "cliproxyapi/claude-opus-5-5",
+  "providers": [
+    {
+      "providerInstanceId": "codex",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": []
+    },
+    {
+      "providerInstanceId": "claudeAgent",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": [
+        {
+          "id": "claude-opus-5-5",
+          "options": [
+            {
+              "id": "effort",
+              "values": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "ultracode",
+                "ultrathink"
+              ],
+              "default": "medium"
+            },
+            {
+              "id": "fastMode",
+              "values": [false, true]
+            }
+          ]
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "options": [
+            {
+              "id": "effort",
+              "values": ["low", "medium", "high", "xhigh", "max", "ultrathink"],
+              "default": "high"
+            }
+          ]
+        },
+        {
+          "id": "claude-fable-5-1",
+          "options": [
+            {
+              "id": "effort",
+              "values": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "ultracode",
+                "ultrathink"
+              ],
+              "default": "medium"
+            }
+          ]
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "options": [
+            {
+              "id": "effort",
+              "values": ["low", "medium", "high", "xhigh", "max", "ultrathink"],
+              "default": "medium"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "providerInstanceId": "cursor",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": []
+    },
+    {
+      "providerInstanceId": "grok",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": [
+        {
+          "id": "grok-build",
+          "options": []
+        }
+      ]
+    },
+    {
+      "providerInstanceId": "opencode",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": []
+    },
+    {
+      "providerInstanceId": "antigravity",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": []
+    },
+    {
+      "providerInstanceId": "muse",
+      "canRunChildTask": false,
+      "canRunCrossProviderChildTask": false,
+      "constraints": ["Provider instance is disabled."],
+      "models": []
+    },
+    {
+      "providerInstanceId": "pi",
+      "canRunChildTask": true,
+      "canRunCrossProviderChildTask": true,
+      "constraints": [],
+      "models": [
+        {
+          "id": "cliproxyapi/gpt-6.1-sol",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/gpt-6-astra",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/gpt-6-luna",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/claude-fable-5-1",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/claude-haiku-5-5",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/claude-opus-5-5",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"],
+              "default": "high"
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/claude-sonnet-5-5",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/muse-spark-1.3",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["minimal", "low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/muse-wonder-1.0",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["minimal", "low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        },
+        {
+          "id": "cliproxyapi/muse-wonder-full-1.0",
+          "options": [
+            {
+              "id": "thinking",
+              "values": ["minimal", "low", "medium", "high", "xhigh", "max"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

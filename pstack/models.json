@@ -1,0 +1,261 @@
+{
+  "routing": {
+    "families": {
+      "claude": {
+        "groundwork": "claude-haiku-5-5",
+        "bounded": "claude-sonnet-5-5",
+        "general": "claude-opus-5-5"
+      },
+      "gpt": {
+        "groundwork": "gpt-6-luna",
+        "bounded": "gpt-6.1-sol",
+        "general": "gpt-6-astra"
+      },
+      "muse": {
+        "groundwork": "muse-spark-1.3",
+        "bounded": "muse-wonder-1.0",
+        "general": "muse-wonder-full-1.0"
+      }
+    },
+    "reasoning": {
+      "groundwork": "low",
+      "bounded": "medium",
+      "general": "high"
+    },
+    "panel": ["claude", "gpt", "muse"],
+    "reserved": [
+      {
+        "model": "claude-fable-5-1",
+        "words": ["fable"]
+      }
+    ],
+    "aboveHigh": [
+      {
+        "level": "xhigh",
+        "words": ["xhigh", "extra high"]
+      },
+      {
+        "level": "max",
+        "words": ["max reasoning", "max effort", "maximum reasoning"]
+      },
+      {
+        "level": "ultracode",
+        "words": ["ultracode"]
+      },
+      {
+        "level": "ultrathink",
+        "words": ["ultrathink"]
+      }
+    ],
+    "fast": {
+      "options": ["fastMode", "serviceTier"],
+      "words": ["fast mode", "priority tier"]
+    },
+    "levels": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultracode",
+      "ultrathink"
+    ],
+    "approval": {
+      "allow xhigh": ["xhigh"],
+      "allow max": ["xhigh", "max", "ultracode", "ultrathink"]
+    }
+  },
+  "jobs": {
+    "mechanical": {
+      "S": {
+        "model": "claude-haiku-5-5",
+        "reasoning": "low"
+      },
+      "M": {
+        "model": "claude-sonnet-5-5",
+        "reasoning": "medium"
+      }
+    },
+    "check": {
+      "S": {
+        "model": "gpt-6-luna",
+        "reasoning": "low"
+      },
+      "M": {
+        "model": "claude-haiku-5-5",
+        "reasoning": "medium"
+      }
+    },
+    "research": {
+      "S": {
+        "model": "muse-spark-1.3",
+        "reasoning": "medium"
+      },
+      "M": {
+        "model": "muse-wonder-1.0",
+        "reasoning": "medium"
+      }
+    },
+    "implement": {
+      "S": {
+        "model": "gpt-6.1-sol",
+        "reasoning": "medium"
+      },
+      "M": {
+        "model": "claude-sonnet-5-5",
+        "reasoning": "high"
+      }
+    },
+    "hard": {
+      "S": {
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      },
+      "M": {
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    "review": {
+      "panel": [
+        {
+          "model": "claude-opus-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "muse-wonder-full-1.0",
+          "reasoning": "high"
+        },
+        {
+          "model": "gpt-6.1-sol",
+          "reasoning": "high"
+        }
+      ]
+    },
+    "design": {
+      "panel": [
+        {
+          "model": "claude-opus-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "muse-wonder-full-1.0",
+          "reasoning": "high"
+        },
+        {
+          "model": "gpt-6-astra",
+          "reasoning": "high"
+        }
+      ]
+    }
+  },
+  "briefs": {
+    "sizes": {
+      "S": {
+        "minutes": 30,
+        "files": 5
+      },
+      "M": {
+        "minutes": 90,
+        "files": 15
+      }
+    },
+    "redBeforeGreen": ["mechanical", "implement", "hard"],
+    "noWrites": ["review", "check"],
+    "gpt": {
+      "family": "gpt",
+      "size": "S",
+      "minutes": 30,
+      "diskMb": 500
+    }
+  },
+  "roles": [
+    {
+      "role": "feature, refactoring",
+      "tier": "single",
+      "skill": "poteto-mode"
+    },
+    {
+      "role": "bug-fix",
+      "tier": "single",
+      "skill": "poteto-mode"
+    },
+    {
+      "role": "perf-issue",
+      "tier": "single",
+      "skill": "poteto-mode"
+    },
+    {
+      "role": "hillclimb",
+      "tier": "single",
+      "skill": "poteto-mode"
+    },
+    {
+      "role": "judgment and prose",
+      "tier": "single",
+      "skill": "poteto-mode"
+    },
+    {
+      "role": "hardest tasks",
+      "alias": "strongest judgment",
+      "tier": "single",
+      "skill": "poteto-mode"
+    },
+    {
+      "role": "how explorer",
+      "tier": "single",
+      "skill": "how"
+    },
+    {
+      "role": "how explainer",
+      "tier": "single",
+      "skill": "how"
+    },
+    {
+      "role": "why investigators",
+      "tier": "single",
+      "skill": "why"
+    },
+    {
+      "role": "why synthesizer",
+      "tier": "single",
+      "skill": "why"
+    },
+    {
+      "role": "reflect tooling",
+      "tier": "single",
+      "skill": "reflect"
+    },
+    {
+      "role": "reflect judgment, divergent, synthesizer",
+      "tier": "single",
+      "skill": "reflect"
+    },
+    {
+      "role": "arena runners",
+      "tier": "panel",
+      "skill": "arena"
+    },
+    {
+      "role": "arena cross-judge pool",
+      "tier": "panel",
+      "skill": "arena"
+    },
+    {
+      "role": "swarm workers",
+      "tier": "single",
+      "skill": "swarm"
+    },
+    {
+      "role": "architect runners",
+      "tier": "panel",
+      "skill": "architect"
+    },
+    {
+      "role": "interrogate reviewers",
+      "tier": "panel",
+      "skill": "interrogate"
+    }
+  ]
+}

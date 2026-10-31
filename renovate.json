@@ -1,0 +1,55 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "dependencyDashboard": true,
+  "separateMajorMinor": false,
+  "enabledManagers": ["npm", "custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^package\\.json$/"],
+      "matchStrings": ["\"t3\": \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "t3",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^pstack/\\.claude-plugin/plugin\\.json$/"],
+      "matchStrings": ["\"version\": \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "chhoumann/t3-pstack",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["*"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "@earendil-works/pi-ai",
+        "@earendil-works/pi-coding-agent"
+      ],
+      "enabled": true,
+      "groupName": "pi",
+      "prBodyNotes": [
+        "Before merging: run `pi update`, then `npm ci && npm run check && npm run typecheck && npm test` on this branch. The tests load the Pi that `pi update` installed, and typecheck reads the new Pi types. The release notes above list new extension API features to adopt. If typecheck fails on TypeBox types, set the `typebox` devDependency to the version Pi's own package.json lists."
+      ]
+    },
+    {
+      "matchPackageNames": ["t3"],
+      "enabled": true,
+      "followTag": "nightly",
+      "prBodyNotes": [
+        "Before merging: run this extension in T3 {{{newVersion}}} and check the bridge it depends on, T3's MCP tools (`src/t3-mcp.ts`) and the prompt sections it trims (`src/bridge-trim.ts`). Then run `npm test`."
+      ]
+    },
+    {
+      "matchPackageNames": ["chhoumann/t3-pstack"],
+      "enabled": true,
+      "prBodyNotes": [
+        "Before merging, sync `pstack/` to v{{{newVersion}}} on this branch. Resolve each conflict so the Pi change stays, then run `npm test`.\n\n```sh\nrm -rf /tmp/t3-pstack\ngit clone -q https://github.com/chhoumann/t3-pstack /tmp/t3-pstack\ngit -C /tmp/t3-pstack switch -q -c release v{{{newVersion}}}\nFILTER_BRANCH_SQUELCH_WARNING=1 git -C /tmp/t3-pstack filter-branch \\\n  --prune-empty --subdirectory-filter plugins/pstack release\ngit fetch /tmp/t3-pstack +release:pstack-upstream\ngit merge -X subtree=pstack pstack-upstream\n```\n\nMerge this PR with a merge commit, never squash or rebase, so the next sync still finds its merge base."
+      ]
+    }
+  ]
+}
