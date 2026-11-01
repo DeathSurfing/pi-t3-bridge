@@ -8,6 +8,10 @@
     "pstack",
     "t3-code"
   ],
+  "homepage": "https://github.com/bjoernaagaard/pi-t3-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/bjoernaagaard/pi-t3-bridge/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -18,6 +22,16 @@
     "pstack.ts",
     "src",
     "pstack",
+    "!pstack/.claude-plugin",
+    "!pstack/.codex-plugin",
+    "!pstack/assets",
+    "!pstack/hooks/*.json",
+    "!pstack/hooks/*.sh",
+    "!pstack/hooks/*.ps1",
+    "!pstack/**/test",
+    "!pstack/**/*.test.ts",
+    "!pstack/**/*.test-helper.ts",
+    "!pstack/**/test-utils",
     "LICENSE"
   ],
   "type": "module",

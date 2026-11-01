@@ -12,8 +12,10 @@ const extensionDir = path.dirname(import.meta.dirname);
 test("upstream pstack files live only under pstack/", async () => {
   const upstream = await readdir(path.join(extensionDir, "pstack"));
 
-  const stray = upstream.filter((name) =>
-    existsSync(path.join(extensionDir, name))
+  // npm shows the root README.md on the package page, so the package keeps
+  // its own beside upstream's.
+  const stray = upstream.filter(
+    (name) => name !== "README.md" && existsSync(path.join(extensionDir, name))
   );
 
   assert.deepEqual(
