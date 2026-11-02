@@ -3,7 +3,6 @@ import {
   glob,
   mkdtemp,
   cp,
-  mkdir,
   readFile,
   rm,
   symlink,
@@ -29,8 +28,7 @@ const expectedSkills = [
 ];
 
 const loadSkills = async (root, extensionFiles) => {
-  const agentDir = path.join(root, "agent");
-  await mkdir(agentDir, { recursive: true });
+  const agentDir = await mkdtemp(path.join(tmpdir(), "pi-t3-tstack-agent-"));
 
   const settingsManager = piSdk.SettingsManager.inMemory({
     compaction: { enabled: false },
@@ -70,6 +68,7 @@ const loadSkills = async (root, extensionFiles) => {
     return loader.getSkills();
   } finally {
     session.dispose();
+    await rm(agentDir, { force: true, recursive: true });
   }
 };
 
