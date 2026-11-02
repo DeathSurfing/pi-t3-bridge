@@ -10,28 +10,23 @@ import type {
 
 // T3 shares its orchestration instructions across providers. Pi has neither
 // Claude's Agent tool nor Codex's spawn_agent, so route its subagents through T3.
-export const BRIDGE_CUTS: readonly string[] = [
-  "- Subagents: use your native tool when the child uses your provider, a model it offers, and no settings beyond yours, and it finishes in this turn (Claude `Agent` always with `run_in_background:false`; Codex `spawn_agent`, then wait). Use `delegate_task` for another provider's model, user-asked settings, a separate checkout (`isolation:\"worktree\"`), background work, or `delegate_task` by name. A native type running another provider's model counts too. Workflow only when asked.",
-];
-
+// Match the bullet by its label, so a reworded bullet still matches.
 const T3_MARKER = "## T3 Code orchestration";
+
+// The section ends at the next h2 heading or closing tag.
+const SECTION = /## T3 Code orchestration[\s\S]*?(?=\n## |\n<\/|$)/gu;
+
+const SUBAGENTS_BULLET = /^- Subagents:.*$/gmu;
+
+const SUBAGENTS_LABEL = /^- Subagents:/mu;
 
 const REPLACEMENT =
   "- Subagents: use `delegate_task` for subagent work. Workflow only when asked.";
 
-const trim = (text: string): string => {
-  if (!text.includes(T3_MARKER)) {
-    return text;
-  }
-
-  let trimmed = text;
-
-  for (const cut of BRIDGE_CUTS) {
-    trimmed = trimmed.replaceAll(cut, REPLACEMENT);
-  }
-
-  return trimmed;
-};
+const trim = (text: string): string =>
+  text.replaceAll(SECTION, (section) =>
+    section.replaceAll(SUBAGENTS_BULLET, REPLACEMENT)
+  );
 
 export const registerBridgeTrim = (pi: ExtensionAPI): void => {
   let warned = false;
@@ -42,14 +37,14 @@ export const registerBridgeTrim = (pi: ExtensionAPI): void => {
       return;
     }
 
-    const missed = BRIDGE_CUTS.filter(
-      (cut) => !(text.includes(cut) || text.includes(REPLACEMENT))
-    ).length;
+    const found = (text.match(SECTION) ?? []).some((section) =>
+      SUBAGENTS_LABEL.test(section)
+    );
 
-    if (missed > 0) {
+    if (!found) {
       warned = true;
       ctx.ui.notify(
-        `pi-t3: ${missed} of ${BRIDGE_CUTS.length} cuts to T3's bridge text no longer match. T3 likely reworded it; update src/bridge/bridge-trim.ts.`,
+        "pi-t3: T3's orchestration text has no '- Subagents:' bullet, so Pi cannot route subagents through T3. Update src/bridge/bridge-trim.ts.",
         "warning"
       );
     }

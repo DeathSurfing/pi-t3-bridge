@@ -7,8 +7,6 @@ import path from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { BRIDGE_CUTS } from "../src/bridge/bridge-trim.ts";
-
 const extensionDir = path.dirname(import.meta.dirname);
 
 const extensionPaths = ["bridge.ts", "pstack.ts"].map((file) =>
@@ -25,8 +23,7 @@ const skip =
     "needs a T3 thread, whose MCP server lists T3's tools") ||
   (!existsSync(bridge) && "T3 has not written its Pi bridge");
 
-const present = (payload) =>
-  BRIDGE_CUTS.map((cut) => payload.includes(JSON.stringify(cut).slice(1, -1)));
+const nativeSubagents = /- Subagents: [^\\]*Codex `spawn_agent`/u;
 
 // Starts Pi the way T3 does, with T3's own bridge connected to the live T3,
 // and returns the first provider request it would send.
@@ -94,7 +91,9 @@ test(
   async () => {
     const before = await firstRequest([]);
     const after = await firstRequest(extensionPaths);
-    const quoted = `Quoted example: ${BRIDGE_CUTS[0]}`;
+
+    const quoted =
+      "Quoted example:\n- Subagents: use your native tool (Claude `Agent`; Codex `spawn_agent`).";
 
     const quotedRequest = JSON.parse(
       await firstRequest(extensionPaths, quoted)
@@ -105,18 +104,15 @@ test(
     await mkdir(path.dirname(artifact), { recursive: true });
     await writeFile(
       artifact,
-      `${JSON.stringify({ after: after.length, at: new Date().toISOString(), before: before.length, presentAfter: present(after), presentBefore: present(before) }, null, 2)}\n`
+      `${JSON.stringify({ after: after.length, at: new Date().toISOString(), before: before.length, nativeAfter: nativeSubagents.test(after), nativeBefore: nativeSubagents.test(before) }, null, 2)}\n`
     );
 
-    assert.deepEqual(
-      present(before),
-      BRIDGE_CUTS.map(() => true),
-      "T3's bridge text no longer contains every cut, so T3 reworded it: update src/bridge-trim.ts"
+    assert.match(
+      before,
+      nativeSubagents,
+      "T3's bridge text no longer sends subagents to native tools"
     );
-    assert.deepEqual(
-      present(after),
-      BRIDGE_CUTS.map(() => false)
-    );
+    assert.doesNotMatch(after, nativeSubagents);
     assert.match(after, /## T3 Code orchestration/u);
     assert.match(after, /Subagents: use `delegate_task` for subagent work/u);
     assert.match(
