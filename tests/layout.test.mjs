@@ -21,7 +21,7 @@ test("upstream pstack files live only under pstack/", async () => {
   assert.deepEqual(
     stray,
     [],
-    "Upstream files landed at the extension root. Merge pstack-upstream with git merge -X subtree=pstack pstack-upstream."
+    "Upstream files landed at the extension root. Merge pstack-upstream with git merge -X subtree=pstack pstack-upstream, then run npm test so overlay/overlay.json anchors are checked against the new upstream text."
   );
 });
 

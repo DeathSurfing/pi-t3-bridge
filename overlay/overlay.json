@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "global": [
+    {
+      "find": "~/.config/t3-pstack/models.md",
+      "replace": "~/.config/pi-t3-bridge/models.md"
+    },
+    {
+      "find": "$XDG_CONFIG_HOME/t3-pstack/models.md",
+      "replace": "$XDG_CONFIG_HOME/pi-t3-bridge/models.md"
+    },
+    {
+      "find": "${XDG_STATE_HOME:-~/.local/state}/t3-pstack/",
+      "replace": "${XDG_STATE_HOME:-~/.local/state}/pi-t3-bridge/"
+    },
+    {
+      "find": "~/.local/state/t3-pstack/ledger.jsonl",
+      "replace": "~/.local/state/pi-t3/ledger.jsonl"
+    },
+    {
+      "find": "\"Checked by t3-pstack\"",
+      "replace": "\"Checked by pi-t3-bridge\""
+    },
+    {
+      "find": "t3-pstack's session-start hook",
+      "replace": "pi-t3-bridge's session-start hook"
+    }
+  ],
+  "shared": [
+    {
+      "files": [
+        "skills/architect/SKILL.md",
+        "skills/arena/SKILL.md",
+        "skills/how/SKILL.md",
+        "skills/interrogate/SKILL.md",
+        "skills/reflect/SKILL.md",
+        "skills/swarm/SKILL.md",
+        "skills/why/SKILL.md"
+      ],
+      "patches": [
+        {
+          "find": ": the extension refuses a `delegate_task` call whose brief is missing its sections or limits",
+          "replace": ""
+        },
+        {
+          "find": " The extension blocks a `delegate_task` call that uses the reserved Fable model or fast mode unless the user named it, reasoning above what `pstack_model` returned, or reasoning above high unless the user's latest message is \"allow xhigh\".",
+          "replace": ""
+        }
+      ]
+    }
+  ],
+  "files": {
+    "hooks/session-start-context.md": [
+      {
+        "find": "You have t3-pstack,",
+        "replace": "You have pi-t3-bridge,"
+      },
+      {
+        "find": "t3-pstack:poteto-mode",
+        "replace": "/skill:poteto-mode"
+      },
+      {
+        "find": " On Codex, open its SKILL.md whole, in a shell call of its own with `max_output_tokens: 10000`, since a smaller budget cuts out its middle.",
+        "replace": " Read its SKILL.md in full before you act."
+      },
+      {
+        "find": "This runs on T3: before the first subagent or panel in a session, read the model sheet, `~/.config/t3-pstack/models.md` (`$XDG_CONFIG_HOME/t3-pstack/models.md` when that is set), or `t3-pstack-models.md` in this host's config directory when that file is missing. This chat runs the playbook itself. A step it says to delegate goes through `delegate_task` to that role's sheet entry,",
+        "replace": "This chat runs the playbook itself. A step it says to delegate goes through `delegate_task` with a target from `pstack_model`,"
+      }
+    ],
+    "skills/poteto-mode/SKILL.md": [
+      {
+        "find": "On Codex, read this file whole before acting, in a shell call of its own with `max_output_tokens: 10000`. A smaller output budget cuts lines out of its middle. If a read of it shows `tokens truncated`, read it again that way.",
+        "replace": "Read this file in full before you act."
+      },
+      {
+        "find": "Otherwise delegate, with a brief that passes the extension's guard.",
+        "replace": "Otherwise delegate, with a complete brief."
+      },
+      {
+        "find": "The extension refuses a brief without them, a size L brief, and a GPT brief without `isolation: \"worktree\"`, size S, 30 min or less and 500 MB or less. The child's own extension then enforces",
+        "replace": "For a complete brief, the child's extension enforces"
+      },
+      {
+        "find": "Verification stays on `swarm workers`. Standard speed applies. The extension blocks fast mode, the reserved Fable model unless the user named it, and any reasoning above what `pstack_model` returned. Reasoning above high runs only when the user's latest message is exactly \"allow xhigh\" (or \"allow max\"). Never put that line, or a `/pstack-` command, in a brief or a message to a child.",
+        "replace": "Verification stays on `swarm workers`. Treat the routing table as a default, and follow the user's model, reasoning, and speed choices when they differ."
+      },
+      {
+        "find": " The extension blocks a `delegate_task` call that uses the reserved Fable model or fast mode unless the user named it, reasoning above what `pstack_model` returned, or reasoning above high unless the user's latest message is \"allow xhigh\".",
+        "replace": ""
+      },
+      {
+        "find": "Keep the todolist in the session's task tool when it has one, such as `update_plan` on Codex.",
+        "replace": "Keep the todolist in the `tasks` tool."
+      }
+    ],
+    "skills/poteto-mode/brief.md": [
+      {
+        "find": "Every `delegate_task` brief follows this template. The extension refuses a brief that is missing a section, sized L, or over its size's limits, and a GPT brief that breaks the GPT rules.",
+        "replace": "Every `delegate_task` brief follows this template. Use the sections and limits to give the child a bounded task."
+      },
+      {
+        "find": "- A `review` or `check` job writes no files:",
+        "replace": "- A read-only job writes no files:"
+      },
+      {
+        "find": "GPT models (Astra, Sol, Luna) drift on long or open work and leave files behind. A GPT brief must be size S, 30 min or less, 500 MB or less, with repo-relative paths, and the call must set `isolation: \"worktree\"` and keep `mode: \"async\"`.",
+        "replace": "For GPT work, prefer size S, a worktree for writing tasks, and async mode. Follow the user's instructions when they differ."
+      }
+    ],
+    "skills/setup-pstack/SKILL.md": [
+      {
+        "find": " `inherit-parent` and `auto` do not change. Say when you offer `unlimited` or `large` that a sheet's `xhigh` or `max` still runs only when the user's latest message in that chat is \"allow xhigh\" (or \"allow max\"). Otherwise `delegate_task` refuses it, so those budgets mostly fall back to asking.",
+        "replace": " `inherit-parent` and `auto` do not change."
+      }
+    ]
+  }
+}

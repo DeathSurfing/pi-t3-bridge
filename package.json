@@ -35,6 +35,7 @@
     "!pstack/**/*.test.ts",
     "!pstack/**/*.test-helper.ts",
     "!pstack/**/test-utils",
+    "overlay",
     "LICENSE",
     "tstack.ts",
     "tstack"
