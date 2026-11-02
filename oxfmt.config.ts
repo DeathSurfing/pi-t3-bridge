@@ -7,5 +7,6 @@ export default defineConfig({
     ...(ultracite.ignorePatterns ?? []),
     "artifacts/**",
     "pstack/**",
+    "tstack/**",
   ],
 });
