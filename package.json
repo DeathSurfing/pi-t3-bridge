@@ -35,7 +35,9 @@
     "!pstack/**/*.test.ts",
     "!pstack/**/*.test-helper.ts",
     "!pstack/**/test-utils",
-    "LICENSE"
+    "LICENSE",
+    "tstack.ts",
+    "tstack"
   ],
   "type": "module",
   "scripts": {
@@ -77,10 +79,12 @@
   "pi": {
     "extensions": [
       "./bridge.ts",
+      "./tstack.ts",
       "./pstack.ts"
     ]
   },
   "upstreams": {
-    "t3": "0.1.5-nightly.20261029.3877"
+    "t3": "0.1.5-nightly.20261029.3877",
+    "tstack": "1085050f3baed1ac724caa4a8166145fb2ac88af"
   }
 }
