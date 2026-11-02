@@ -191,9 +191,12 @@ test("the Pi extension loads the bundled pstack project and supplies session gui
     assert.doesNotMatch(
       guidance,
       /On Codex|t3-pstack-models\.md|t3-pstack:poteto-mode/u,
-      "an upstream rewrite in src/session.ts no longer matches the hook text"
+      "an overlay patch in overlay/overlay.json no longer matches the hook text"
     );
-    assert.ok(guidance.includes(extensionDir));
+    assert.ok(
+      guidance.includes("pstack-overlay"),
+      "guidance names the overlaid pstack root, not the upstream copy"
+    );
 
     const tool = session.extensionRunner.getToolDefinition("transcript");
 

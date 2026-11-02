@@ -48,7 +48,7 @@
       "matchPackageNames": ["chhoumann/t3-pstack"],
       "enabled": true,
       "prBodyNotes": [
-        "Before merging, sync `pstack/` to v{{{newVersion}}} on this branch. Resolve each conflict so the Pi change stays, then run `npm test`.\n\n```sh\nrm -rf /tmp/t3-pstack\ngit clone -q https://github.com/chhoumann/t3-pstack /tmp/t3-pstack\ngit -C /tmp/t3-pstack switch -q -c release v{{{newVersion}}}\nFILTER_BRANCH_SQUELCH_WARNING=1 git -C /tmp/t3-pstack filter-branch \\\n  --prune-empty --subdirectory-filter plugins/pstack release\ngit fetch /tmp/t3-pstack +release:pstack-upstream\ngit merge -X subtree=pstack pstack-upstream\n```\n\nMerge this PR with a merge commit, never squash or rebase, so the next sync still finds its merge base."
+        "Before merging, sync `pstack/` to v{{{newVersion}}} on this branch. `pstack/` holds no Pi changes, so take the upstream text as it comes. Then run `npm test`. If an overlay patch in `overlay/overlay.json` no longer matches, update that patch to the new upstream wording and rerun `npm test`.\n\n```sh\nrm -rf /tmp/t3-pstack\ngit clone -q https://github.com/chhoumann/t3-pstack /tmp/t3-pstack\ngit -C /tmp/t3-pstack switch -q -c release v{{{newVersion}}}\nFILTER_BRANCH_SQUELCH_WARNING=1 git -C /tmp/t3-pstack filter-branch \\\n  --prune-empty --subdirectory-filter plugins/pstack release\ngit fetch /tmp/t3-pstack +release:pstack-upstream\ngit merge -X subtree=pstack pstack-upstream\n```\n\nMerge this PR with a merge commit, never squash or rebase, so the next sync still finds its merge base."
       ]
     }
   ]

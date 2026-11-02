@@ -5,7 +5,7 @@ description: Configure which T3 provider and model pstack uses per role and at w
 
 # Setup pstack
 
-Write the model sheet, `~/.config/pi-t3-bridge/models.md` (`$XDG_CONFIG_HOME/pi-t3-bridge/models.md` when that is set), one per machine. It sets pstack's T3 provider and model per role, and every pstack skill reads it before it dispatches.
+Write the model sheet, `~/.config/t3-pstack/models.md` (`$XDG_CONFIG_HOME/t3-pstack/models.md` when that is set), one per machine. It sets pstack's T3 provider and model per role, and every pstack skill reads it before it dispatches.
 
 ## Steps
 
@@ -26,11 +26,11 @@ The default role-to-target mapping is the sheet shape in step 5 below. If the sh
 - `medium - high reasoning`
 - `small - medium reasoning`
 
-**(b) Apply it.** Build the working table from the defaults, and on a re-run keep any role you changed by provider, list, or alias (`inherit-parent`, `auto`). `unlimited`, `large`, and `small` set the reasoning option of every entry, panel entries included, to `max`, `xhigh`, or `medium`. `medium` writes no reasoning option, so `pstack_model` sets `low`, `medium`, or `high` from each job's complexity. Use the option ID that provider lists. If the provider does not offer that value, use its highest value at or below the target, else mark the role as needing a choice. So Grok, whose reasoning tops out at `xhigh`, stays at `xhigh` under `unlimited`. `inherit-parent` and `auto` do not change.
+**(b) Apply it.** Build the working table from the defaults, and on a re-run keep any role you changed by provider, list, or alias (`inherit-parent`, `auto`). `unlimited`, `large`, and `small` set the reasoning option of every entry, panel entries included, to `max`, `xhigh`, or `medium`. `medium` writes no reasoning option, so `pstack_model` sets `low`, `medium`, or `high` from each job's complexity. Use the option ID that provider lists. If the provider does not offer that value, use its highest value at or below the target, else mark the role as needing a choice. So Grok, whose reasoning tops out at `xhigh`, stays at `xhigh` under `unlimited`. `inherit-parent` and `auto` do not change. Say when you offer `unlimited` or `large` that a sheet's `xhigh` or `max` still runs only when the user's latest message in that chat is "allow xhigh" (or "allow max"). Otherwise `delegate_task` refuses it, so those budgets mostly fall back to asking.
 
 **(c) Show the roles and confirm.** Show every role with its entry, marking any target not in the detected set as needing a choice. Also list each line step 2 dropped. Ask whether to accept as-is or change specific roles, offering the detected targets plus `inherit-parent` and `auto` (both mean: this role runs on the parent chat's model) as the options. For panel roles (`arena runners`, `architect runners`, `interrogate reviewers`) the value is a list, and one subagent runs per entry, alias entries included, so the list length sets the count. A panel needs at least two model families among its targets. A model's family is the first segment of its ID's last `/` part, such as `claude`, `gpt`, or `grok`. `arena cross-judge pool` is also a list, but Arena runs one judge. It tries only values from a family other than the parent's. Among those it tries first the ones whose model ran fewer candidates, and list order decides among values that ran as many, so order it by preference. An `inherit-parent` or `auto` value never judges. `swarm workers` is the default target for every worker unless a race or comparison assigns another per arm.
 
-**(d) Ask about the session-start hook.** Ask whether pi-t3-bridge's session-start hook should keep telling new chats when to enter `/poteto-mode`. Write `session hook: on` or `session hook: off`.
+**(d) Ask about the session-start hook.** Ask whether t3-pstack's session-start hook should keep telling new chats when to enter `/poteto-mode`. Write `session hook: on` or `session hook: off`.
 
 ### 4. Validate
 

@@ -57,22 +57,8 @@ export const sessionHookEnabled = (): boolean => {
   return !SESSION_HOOK_OFF.test(readFileSync(sheetPath, "utf-8"));
 };
 
-// Upstream's hook text is written for Claude Code and Codex. Each pair
-// rewrites a part that reads differently on Pi, where pstack_model reads the
-// model sheet and no shell output budget cuts a SKILL.md.
-const PI_REWRITES: readonly (readonly [string, string])[] = [
-  ["You have t3-pstack,", "You have pi-t3-bridge,"],
-  ["t3-pstack:poteto-mode", "/skill:poteto-mode"],
-  [
-    " On Codex, open its SKILL.md whole, in a shell call of its own with `max_output_tokens: 10000`, since a smaller budget cuts out its middle.",
-    " Read its SKILL.md in full before you act.",
-  ],
-  [
-    "This runs on T3: before the first subagent or panel in a session, read the model sheet, `~/.config/t3-pstack/models.md` (`$XDG_CONFIG_HOME/t3-pstack/models.md` when that is set), or `t3-pstack-models.md` in this host's config directory when that file is missing. This chat runs the playbook itself. A step it says to delegate goes through `delegate_task` to that role's sheet entry,",
-    "This chat runs the playbook itself. A step it says to delegate goes through `delegate_task` with a target from `pstack_model`,",
-  ],
-];
-
+// paths.pstackRoot already has the overlay applied, so the hook text on
+// disk is the Pi text. The overlay owns every rewrite of upstream wording.
 export const sessionGuidance = (paths: PstackPaths): string => {
   const contextPath = path.join(
     paths.pstackRoot,
@@ -80,18 +66,12 @@ export const sessionGuidance = (paths: PstackPaths): string => {
     "session-start-context.md"
   );
 
-  const upstreamGuidance = existsSync(contextPath)
+  const guidance = existsSync(contextPath)
     ? readFileSync(contextPath, "utf-8").trim()
     : "You have pi-t3-bridge, pstack for T3 Code.";
 
-  let piGuidance = upstreamGuidance;
-
-  for (const [from, to] of PI_REWRITES) {
-    piGuidance = piGuidance.replaceAll(from, to);
-  }
-
   return [
-    piGuidance,
+    guidance,
     "",
     "Pi notes:",
     `- The pstack root is ${paths.pstackRoot}. Read skill and agent files there when a skill names a plugin root.`,
