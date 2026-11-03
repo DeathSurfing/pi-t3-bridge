@@ -101,7 +101,7 @@ type Asked = { readonly answers: unknown } | { readonly error: string };
 const ANSWER_TOOL = "classifier_answers";
 
 // One flat argument per asked question: a bool is a probability, a choice is
-// one of its criteria keys, a score is a number.
+// one of its criteria keys. No caller asks a score question.
 const answerSchema = (question: ClassifierQuestion): TSchema => {
   switch (question.type) {
     case "bool": {
@@ -112,10 +112,6 @@ const answerSchema = (question: ClassifierQuestion): TSchema => {
       return Type.Union(
         Object.keys(question.criteria).map((key) => Type.Literal(key))
       );
-    }
-
-    case "score": {
-      return Type.Number();
     }
 
     default: {
@@ -130,7 +126,6 @@ const chatPrompt = (context: ClassifierContext): string =>
     `Call ${ANSWER_TOOL} exactly once, with one value for every question.`,
     'For a bool question, give the probability from 0 to 1 that its "true" criteria holds.',
     "For a choice question, give the key of the criteria that fits best.",
-    "For a score question, give a number.",
     "",
     "Questions, as JSON:",
     JSON.stringify(context.questions),
@@ -141,8 +136,7 @@ const chatPrompt = (context: ClassifierContext): string =>
 
 type FlatAnswer =
   | { readonly probability: number; readonly type: "bool" }
-  | { readonly choice: string; readonly type: "choice" }
-  | { readonly score: number; readonly type: "score" };
+  | { readonly choice: string; readonly type: "choice" };
 
 // Parses one flat value per question, checked against that question's own
 // schema, and turns it into the answer shape a classifier returns.
@@ -186,15 +180,6 @@ const parseAnswers = <S extends TSchema>(
         break;
       }
 
-      case "score": {
-        if (!Value.Check(Type.Number(), value)) {
-          return undefined;
-        }
-
-        answers[name] = { score: value, type: "score" };
-        break;
-      }
-
       default: {
         return undefined;
       }
@@ -202,22 +187,6 @@ const parseAnswers = <S extends TSchema>(
   }
 
   return answers;
-};
-
-const answersFromText = <S extends TSchema>(
-  schema: S,
-  questions: ClassifierContext["questions"],
-  text: string
-) => {
-  const candidate =
-    /```(?:json)?\s*(?<body>[\s\S]*?)```/u.exec(text)?.groups?.body ?? text;
-
-  const body = candidate.slice(
-    candidate.indexOf("{"),
-    candidate.lastIndexOf("}") + 1
-  );
-
-  return parseAnswers(schema, questions, JSON.parse(body));
 };
 
 const askChat = async (
@@ -272,13 +241,7 @@ const askChat = async (
     const answers =
       call?.type === "toolCall"
         ? parseAnswers(schema, context.questions, call.arguments)
-        : answersFromText(
-            schema,
-            context.questions,
-            reply.content
-              .map((part) => (part.type === "text" ? part.text : ""))
-              .join("")
-          );
+        : undefined;
 
     if (answers === undefined) {
       return {
@@ -333,7 +296,21 @@ const askClassifier = async (
     "jev-latest"
   );
 
-  const available = await ctx.modelRegistry.getAvailableOfType("classifier");
+  let available: Awaited<
+    ReturnType<typeof ctx.modelRegistry.getAvailableOfType>
+  >;
+
+  try {
+    available = await ctx.modelRegistry.getAvailableOfType(
+      "classifier",
+      "typesafe",
+      { signal }
+    );
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   if (
     jev !== undefined &&
