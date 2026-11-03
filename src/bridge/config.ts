@@ -25,6 +25,7 @@ const ChildSandboxSchema = Type.Union([
 export interface Config {
   readonly bashTimeoutSeconds: number | undefined;
   readonly childSandbox: Static<typeof ChildSandboxSchema> | undefined;
+  readonly classifierModel: string | undefined;
   readonly mcpUrl: string | undefined;
   readonly steer: Static<typeof SteerSchema> | undefined;
 }
@@ -37,6 +38,7 @@ interface Loaded {
 const EMPTY: Config = {
   bashTimeoutSeconds: undefined,
   childSandbox: undefined,
+  classifierModel: undefined,
   mcpUrl: undefined,
   steer: undefined,
 };
@@ -88,6 +90,10 @@ const parse = (text: string): Loaded => {
         Type.Number({ exclusiveMinimum: 0 })
       ),
       childSandbox: field("childSandbox", ChildSandboxSchema),
+      classifierModel: field(
+        "classifierModel",
+        Type.String({ pattern: "^[^/\\s]+/.+$" })
+      ),
       mcpUrl: field("mcpUrl", Type.String({ minLength: 1 })),
       steer: field("steer", SteerSchema),
     },

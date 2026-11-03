@@ -1280,3 +1280,162 @@ test("a MAST check that fails is logged and changes nothing", async () => {
     session.dispose();
   }
 });
+
+// A faux chat-model reply to a judge call: the flat arguments of the
+// classifier_answers tool.
+const judgeReply = (flat) =>
+  piAi.fauxAssistantMessage([piAi.fauxToolCall("classifier_answers", flat)], {
+    stopReason: "toolUse",
+  });
+
+const chatStop = ({ kind, unfinished }) =>
+  judgeReply({ stop_kind: kind, unfinished });
+
+const chatMast = (scores) =>
+  judgeReply(
+    Object.fromEntries(
+      Object.entries(MAST_FIELDS).map(([code, field]) => [
+        field,
+        scores[code] ?? 0,
+      ])
+    )
+  );
+
+test("without Jev the session model judges a stop and the early-stop nudge fires", async () => {
+  const { log } = await arrange({ steer: "on" });
+
+  const { faux, session } = await start("no-jev-stop", undefined, {
+    jev: false,
+  });
+
+  try {
+    faux.setResponses([
+      quits("Next I'll patch src/retry.ts and run the tests."),
+      chatStop(GAVE_UP),
+      quits("Patched, and the tests pass."),
+      chatStop(DONE),
+    ]);
+    await session.prompt("Fix the retry bug.");
+
+    assert.equal(notesIn(session).length, 1);
+    assert.equal(
+      assistantTexts(session).length,
+      2,
+      "the judge's reply is not part of the session"
+    );
+
+    const lines = await log();
+
+    assert.deepEqual(
+      lines.map((line) => [line.error, line.nudged]),
+      [
+        [undefined, true],
+        [undefined, false],
+      ]
+    );
+    assert.deepEqual(lines[0].verdict, {
+      kind: "gave_up_midway",
+      unfinished: 0.92,
+    });
+  } finally {
+    session.dispose();
+  }
+});
+
+test("a configured classifierModel wins over an available Jev", async () => {
+  const { log } = await arrange({
+    classifierModel: "faux-chosen/claude-opus-5-5",
+    steer: "on",
+  });
+
+  const jev = scripted(DONE);
+  const { faux, session } = await start("chosen", jev.classify);
+
+  try {
+    faux.setResponses([
+      quits("Next I'll patch src/retry.ts and run the tests."),
+      chatStop(GAVE_UP),
+      quits("Patched, and the tests pass."),
+      chatStop(DONE),
+    ]);
+    await session.prompt("Fix the retry bug.");
+
+    assert.equal(jev.requests.length, 0);
+    assert.equal(notesIn(session).length, 1);
+
+    const lines = await log();
+
+    assert.deepEqual(
+      lines.map((line) => line.nudged),
+      [true, false]
+    );
+  } finally {
+    session.dispose();
+  }
+});
+
+test("a classifierModel that is not in the catalog is an error naming it, and Jev is not used", async () => {
+  const { log } = await arrange({
+    classifierModel: "nowhere/no-such-model",
+    steer: "on",
+  });
+
+  const jev = scripted(GAVE_UP);
+  const { session, turn } = await start("missing-chosen", jev.classify);
+
+  try {
+    await turn([], "Fix the retry bug.", "Next I'll patch src/retry.ts.");
+
+    assert.equal(jev.requests.length, 0);
+    assert.deepEqual(notesIn(session), []);
+
+    const [line] = await log();
+
+    assert.match(line.error, /classifierModel "nowhere\/no-such-model"/u);
+    assert.equal(line.nudged, false);
+  } finally {
+    session.dispose();
+  }
+});
+
+test("without Jev the session model answers a MAST check and the note fires", async () => {
+  const { log } = await arrange({ steer: "on" });
+
+  const { faux, session } = await start("no-jev-mast", undefined, {
+    jev: false,
+  });
+
+  try {
+    faux.setResponses([
+      toolTurn(),
+      toolTurn(),
+      toolTurn(),
+      chatMast({ 2.3: 0.9 }),
+      toolTurn(),
+      toolTurn(),
+      toolTurn(),
+      chatMast({}),
+      quits("Refactored the retry module."),
+      chatStop(DONE),
+    ]);
+    await session.prompt("Refactor the retry module.");
+
+    const [note, ...rest] = mastNotesIn(session);
+
+    assert.deepEqual(rest, []);
+    assert.match(note.content, /^MAST · Wandered off \(p=0\.90\): /u);
+    assert.deepEqual(note.details, { code: "2.3", probability: 0.9 });
+
+    const lines = await mastLog(log);
+
+    assert.deepEqual(
+      lines.map((line) => [line.turn, line.error, line.fired]),
+      [
+        [3, undefined, ["2.3"]],
+        [6, undefined, []],
+      ]
+    );
+  } finally {
+    session.dispose();
+  }
+});
