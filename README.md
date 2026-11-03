@@ -142,7 +142,13 @@ The bridge caps every shell command at 300 seconds, in the main thread and in ch
 
 ### Stop checks
 
-When a run is about to stop, the bridge asks a classifier how the run ended. The classifier is `typesafe/jev-latest` from your Pi model catalog. When the classifier says the agent gave up partway, the bridge adds a note and gives the agent one more turn, at most twice per prompt. Every 3 turns during a run, the bridge also asks the classifier whether the agent shows a known failure, and it adds a note when one is likely. The failures it checks for come from the MAST list of agent failures:
+When a run is about to stop, the bridge asks a classifier how the run ended. It picks the classifier in this order:
+
+1. The chat model named by `classifierModel` in the config, as `"provider/modelId"`.
+2. `typesafe/jev-latest`, when it is in your Pi model catalog and you have access to it.
+3. The model of the current session.
+
+A chat model gets the same questions through one tool call, and the bridge reads its answers from the tool arguments. A chat model's probabilities are its own estimates. They are not calibrated like Jev's, and the stop thresholds were fitted on Jev, so a chat model may nudge more or less often. If Jev is available but its call fails, the bridge does not fall back to a chat model. A `classifierModel` that is not in the catalog or has no auth is an error, and the bridge does not fall back from it either. When the classifier says the agent gave up partway, the bridge adds a note and gives the agent one more turn, at most twice per prompt. Every 3 turns during a run, the bridge also asks the classifier whether the agent shows a known failure, and it adds a note when one is likely. The failures it checks for come from the MAST list of agent failures:
 
 - Stuck in a loop
 - Doesn't know when to stop
@@ -160,6 +166,8 @@ on(run about to stop)
 ```
 
 The stop check and the notes come from [pi-mast-steer](https://github.com/dbreunig/pi-mast-steer). Set `steer` to `"shadow"` in the config to log verdicts without changing the session, or to `"off"` to turn the checks off.
+
+A chat-model judge costs tokens on your account, one call per stop check and one every 3 turns.
 
 ## The pstack extension
 
@@ -223,6 +231,7 @@ The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Ev
 {
   "bashTimeoutSeconds": 300,
   "childSandbox": "on",
+  "classifierModel": "anthropic/claude-sonnet-4-5",
   "mcpUrl": "http://127.0.0.1:3773/mcp",
   "steer": "on"
 }
@@ -232,6 +241,7 @@ The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Ev
 | --- | --- | --- |
 | `bashTimeoutSeconds` | `300` | The longest a shell command can run, in seconds. |
 | `childSandbox` | `"on"` | Whether a delegated child's shell commands need a sandbox. With `"on"`, a child's `bash` is blocked when no sandbox can run. With `"off"`, commands run with no sandbox on every platform, and the child's report says `SANDBOX: off`. |
+| `classifierModel` | unset | A chat model that judges the stop checks, as `"provider/modelId"`. The model id may contain more slashes. When unset, the bridge uses `typesafe/jev-latest` if it is available, and the session model if not. A chat model's probabilities are its own estimates, not Jev-calibrated. |
 | `mcpUrl` | `http://127.0.0.1:3773/mcp` | The T3 MCP endpoint to use outside a T3 thread. |
 | `steer` | `"on"` | The stop checks, as `"on"`, `"shadow"`, or `"off"`. |
 
@@ -251,7 +261,7 @@ Earlier releases kept the state and the model sheet under `t3-pstack`. The first
 
 ## Data handling
 
-The package has no server and sends no telemetry. The stop checks send parts of the session transcript to the classifier provider in your Pi model catalog, and any file a skill asks the agent to read goes to your model provider. Scripts run on your machine, and the PR tools use your GitHub CLI login.
+The package has no server and sends no telemetry. The stop checks send parts of the session transcript to the classifier provider, which is Jev, the model you name in `classifierModel`, or your session model, and any file a skill asks the agent to read goes to your model provider. Scripts run on your machine, and the PR tools use your GitHub CLI login.
 
 ## Development
 

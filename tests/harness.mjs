@@ -213,11 +213,14 @@ const registerClassifier = async (modelRuntime, classify) => {
 // One Pi session with this extension loaded, driven by a scripted faux model.
 // `modelId` sets the session model's ID, and so its family. `classify` scripts
 // the stop judge, and `agentsFiles` are the context files the session loads.
+// `jev: false` swaps the built-in typesafe provider for one with no models, so
+// the session has no Jev even when TYPESAFE_API_KEY is set on the machine.
 export const startSession = async ({
   agentsFiles = [],
   classify = unscripted,
   cwd,
   extensions = ["bridge.ts", "pstack.ts"],
+  jev = true,
   modelId = "claude-opus-5-5",
   name,
   retry = { enabled: false },
@@ -243,7 +246,33 @@ export const startSession = async ({
 
   modelRuntime.registerNativeProvider(faux.provider);
   await modelRuntime.setRuntimeApiKey(`faux-${name}`, "test");
-  await registerClassifier(modelRuntime, classify);
+
+  if (jev) {
+    await registerClassifier(modelRuntime, classify);
+  } else {
+    modelRuntime.registerNativeProvider(
+      piAi.createProvider({
+        auth: {
+          apiKey: {
+            name: "Test",
+            resolve: () => Promise.resolve({ auth: {} }),
+          },
+        },
+        classifiers: {
+          "typesafe-system-one": {
+            classify: () =>
+              Promise.reject(new Error("No Jev in this session.")),
+          },
+        },
+        id: "typesafe",
+        models: [],
+      })
+    );
+  }
+
+  // Pi reports a new provider as configured only after a background refresh.
+  // A real session starts long before its first judge call, so wait for it.
+  await modelRuntime.refresh({ allowNetwork: false });
 
   const settingsManager = piSdk.SettingsManager.inMemory({
     compaction: { enabled: false },
