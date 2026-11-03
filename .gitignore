@@ -3,5 +3,4 @@ artifacts/
 .audit/
 .agents
 .humanlayer
-.playwright-mcp
 .scratch
