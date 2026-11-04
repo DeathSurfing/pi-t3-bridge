@@ -38,7 +38,8 @@
     "overlay",
     "LICENSE",
     "tstack.ts",
-    "tstack"
+    "tstack",
+    "amplike.ts"
   ],
   "type": "module",
   "scripts": {
@@ -81,7 +82,8 @@
     "extensions": [
       "./bridge.ts",
       "./tstack.ts",
-      "./pstack.ts"
+      "./pstack.ts",
+      "./amplike.ts"
     ]
   },
   "upstreams": {
