@@ -5,9 +5,20 @@ import type {
   ExtensionAPI,
   ExtensionToolContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import {
+  arr,
+  bool,
+  compile,
+  lit,
+  map,
+  nullable,
+  obj,
+  oneOf,
+  opt,
+  str,
+  union,
+} from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import {
   family,
@@ -24,75 +35,88 @@ import { ACCOUNT_COMMAND } from "./brief.ts";
 import { policyPath } from "./resources.ts";
 import { modelSheetPath } from "./session.ts";
 
-const OptionValueSchema = Type.Union([Type.String(), Type.Boolean()]);
+const OptionValueSchema = union([str(), bool()]);
 
-const CatalogOptionSchema = Type.Object({
-  id: Type.String(),
-  values: Type.Array(OptionValueSchema),
-});
+const CatalogOptionSchema = obj(
+  { id: str(), values: arr(OptionValueSchema) },
+  { open: true }
+);
 
-const CatalogModelSchema = Type.Object({
-  id: Type.String(),
-  options: Type.Optional(Type.Array(CatalogOptionSchema)),
-});
+const CatalogModelSchema = obj(
+  { id: str(), options: opt(arr(CatalogOptionSchema)) },
+  { open: true }
+);
 
-const CatalogProviderSchema = Type.Object({
-  canRunChildTask: Type.Boolean(),
-  canRunCrossProviderChildTask: Type.Optional(Type.Boolean()),
-  models: Type.Array(CatalogModelSchema),
-  providerInstanceId: Type.String(),
-});
+const CatalogProviderSchema = obj(
+  {
+    canRunChildTask: bool(),
+    canRunCrossProviderChildTask: opt(bool()),
+    models: arr(CatalogModelSchema),
+    providerInstanceId: str(),
+  },
+  { open: true }
+);
 
-const CatalogSchema = Type.Object({
-  inheritedModel: Type.Union([Type.String(), Type.Null()]),
-  inheritedProviderInstanceId: Type.Union([Type.String(), Type.Null()]),
-  providers: Type.Array(CatalogProviderSchema),
-});
+const CatalogSchema = obj(
+  {
+    inheritedModel: nullable(str()),
+    inheritedProviderInstanceId: nullable(str()),
+    providers: arr(CatalogProviderSchema),
+  },
+  { open: true }
+);
 
-const ComplexitySchema = Type.Union([
-  Type.Literal("groundwork"),
-  Type.Literal("bounded"),
-  Type.Literal("general"),
+const catalogValidator = compile(CatalogSchema);
+
+const ComplexitySchema = oneOf(["groundwork", "bounded", "general"]);
+
+const SizesSchema = obj(
+  { bounded: str(), general: str(), groundwork: str() },
+  { open: true }
+);
+
+const JobTargetSchema = obj({ model: str(), reasoning: str() }, { open: true });
+
+const JobSchema = union([
+  obj({ M: JobTargetSchema, S: JobTargetSchema }, { open: true }),
+  obj({ panel: arr(JobTargetSchema, { minItems: 2 }) }, { open: true }),
 ]);
 
-const SizesSchema = Type.Object({
-  bounded: Type.String(),
-  general: Type.String(),
-  groundwork: Type.String(),
-});
+const PolicySchema = obj(
+  {
+    briefs: obj(
+      { gpt: obj({ family: str(), size: str() }, { open: true }) },
+      { open: true }
+    ),
+    jobs: map(JobSchema),
+    roles: arr(
+      obj(
+        {
+          alias: opt(str()),
+          role: str(),
+          skill: str(),
+          tier: oneOf(["single", "panel"]),
+        },
+        { open: true }
+      )
+    ),
+    routing: obj(
+      {
+        families: map(SizesSchema),
+        panel: arr(str(), { minItems: 2 }),
+        reasoning: SizesSchema,
+      },
+      { open: true }
+    ),
+  },
+  { open: true }
+);
 
-const JobTargetSchema = Type.Object({
-  model: Type.String(),
-  reasoning: Type.String(),
-});
+const isPolicy = compile(PolicySchema).check;
 
-const JobSchema = Type.Union([
-  Type.Object({ M: JobTargetSchema, S: JobTargetSchema }),
-  Type.Object({ panel: Type.Array(JobTargetSchema, { minItems: 2 }) }),
-]);
+const isBoolean = compile(bool()).check;
 
-const PolicySchema = Type.Object({
-  briefs: Type.Object({
-    gpt: Type.Object({
-      family: Type.String(),
-      size: Type.String(),
-    }),
-  }),
-  jobs: Type.Record(Type.String(), JobSchema),
-  roles: Type.Array(
-    Type.Object({
-      alias: Type.Optional(Type.String()),
-      role: Type.String(),
-      skill: Type.String(),
-      tier: Type.Union([Type.Literal("single"), Type.Literal("panel")]),
-    })
-  ),
-  routing: Type.Object({
-    families: Type.Record(Type.String(), SizesSchema),
-    panel: Type.Array(Type.String(), { minItems: 2 }),
-    reasoning: SizesSchema,
-  }),
-});
+const isThreadSend = compile(obj({ message: str() }, { open: true })).check;
 
 type CatalogOption = Static<typeof CatalogOptionSchema>;
 
@@ -112,11 +136,10 @@ type OptionValue = Static<typeof OptionValueSchema>;
 
 type TargetOptions = Readonly<Record<string, OptionValue>>;
 
-const TargetSchema = Type.Object({
-  model: Type.String(),
-  options: Type.Record(Type.String(), OptionValueSchema),
-  providerInstanceId: Type.String(),
-});
+const TargetSchema = obj(
+  { model: str(), options: map(OptionValueSchema), providerInstanceId: str() },
+  { open: true }
+);
 
 type Target = Static<typeof TargetSchema>;
 
@@ -129,24 +152,24 @@ interface ResolveContext {
   readonly policy: Policy;
 }
 
-const ResolutionSchema = Type.Union([
-  Type.Object({
-    kind: Type.Literal("targets"),
-    notes: Type.Array(Type.String()),
-    role: Type.String(),
-    targets: Type.Array(TargetSchema),
-  }),
-  Type.Object({
-    kind: Type.Literal("inherit-parent"),
-    notes: Type.Array(Type.String()),
-    role: Type.String(),
-  }),
-  Type.Object({
-    kind: Type.Literal("blocked"),
-    notes: Type.Array(Type.String()),
-    reason: Type.String(),
-    role: Type.String(),
-  }),
+const ResolutionSchema = union([
+  obj(
+    {
+      kind: lit("targets"),
+      notes: arr(str()),
+      role: str(),
+      targets: arr(TargetSchema),
+    },
+    { open: true }
+  ),
+  obj(
+    { kind: lit("inherit-parent"), notes: arr(str()), role: str() },
+    { open: true }
+  ),
+  obj(
+    { kind: lit("blocked"), notes: arr(str()), reason: str(), role: str() },
+    { open: true }
+  ),
 ]);
 
 type Resolution = Static<typeof ResolutionSchema>;
@@ -190,7 +213,7 @@ const optionValues = (option: CatalogOption): readonly string[] =>
   option.values.map(String);
 
 const isSwitch = (option: CatalogOption): boolean =>
-  option.values.every((value) => Value.Check(Type.Boolean(), value));
+  option.values.every((value) => isBoolean(value));
 
 const translateOptions = (
   wanted: TargetOptions,
@@ -673,7 +696,7 @@ const resolveRole = (
 const readPolicy = (): Policy => {
   const policy = JSON.parse(readFileSync(policyPath(), "utf-8"));
 
-  if (!Value.Check(PolicySchema, policy)) {
+  if (!isPolicy(policy)) {
     throw new TypeError("models.json does not have the expected shape.");
   }
 
@@ -707,7 +730,7 @@ const readCatalog = async (ctx: ExtensionToolContext): Promise<Catalog> => {
     );
   }
 
-  const catalog = t3Json(CatalogSchema, outcome.result);
+  const catalog = t3Json(catalogValidator, outcome.result);
 
   if (catalog === undefined) {
     throw new TypeError(
@@ -718,29 +741,38 @@ const readCatalog = async (ctx: ExtensionToolContext): Promise<Catalog> => {
   return catalog;
 };
 
-const ComplexityOrJob = Type.Object({
-  complexity: Type.Optional(ComplexitySchema),
-  job: Type.Optional(
-    Type.String({
-      description:
-        "The job type from the routing table: mechanical, check, research, implement, hard, review, or design.",
-    })
-  ),
-  role: Type.String({ description: "The pstack role name.", minLength: 1 }),
-  size: Type.Optional(
-    Type.Union([Type.Literal("S"), Type.Literal("M"), Type.Literal("L")], {
-      description:
-        "S: 30 min or less and 5 files or fewer. M: 90 min or less and 15 files or fewer. L is refused: split it.",
-    })
-  ),
-});
+const ComplexityOrJob = obj(
+  {
+    complexity: opt(ComplexitySchema),
+    job: opt(
+      str({
+        description:
+          "The job type from the routing table: mechanical, check, research, implement, hard, review, or design.",
+      })
+    ),
+    role: str({ description: "The pstack role name.", minLength: 1 }),
+    size: opt(
+      oneOf(["S", "M", "L"], {
+        description:
+          "S: 30 min or less and 5 files or fewer. M: 90 min or less and 15 files or fewer. L is refused: split it.",
+      })
+    ),
+  },
+  { open: true }
+);
 
 const modelTool = (pi: ExtensionAPI) =>
   defineTool({
     annotations: { readOnlyHint: true },
     description:
       "Resolve the delegate_task target for a pstack role. Pass the role name with the job and size from the routing table, or the complexity when there is no job. Pass each returned target as delegate_task's target. kind inherit-parent means omit target, and kind blocked means the role cannot run.",
-    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+    execute: async (
+      _toolCallId,
+      params: Static<typeof ComplexityOrJob>,
+      _signal,
+      _onUpdate,
+      ctx
+    ) => {
       await settleChildren(pi, ctx);
 
       const accounts = readAccounts(ctx);
@@ -778,7 +810,7 @@ export const registerModelRouting = (pi: ExtensionAPI): void => {
     if (
       (event.toolName === "mcp__t3-code__t3_thread_send" ||
         event.toolName === "mcp__t3__t3_thread_send") &&
-      Value.Check(Type.Object({ message: Type.String() }), event.input) &&
+      isThreadSend(event.input) &&
       ACCOUNT_COMMAND.test(event.input.message)
     ) {
       return {

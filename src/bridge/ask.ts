@@ -4,103 +4,79 @@ import type {
   ExtensionUIContext,
   ExtensionUIDialogOptions,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import {
+  arr,
+  compile,
+  int,
+  lit,
+  obj,
+  oneOf,
+  opt,
+  str,
+  union,
+} from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import { registerUnlessTaken } from "./claim.ts";
 import { insideT3 } from "./t3-http.ts";
 
 const OWN_ANSWER = "Type my own answer";
 
-const ChoiceSchema = Type.Object(
-  {
-    description: Type.Optional(
-      Type.String({
-        description: "Why to pick it, shown under the question.",
-        minLength: 1,
-      })
-    ),
-    label: Type.String({ description: "The choice.", minLength: 1 }),
-  },
-  { additionalProperties: false }
-);
+const ChoiceSchema = obj({
+  description: opt(
+    str({
+      description: "Why to pick it, shown under the question.",
+      minLength: 1,
+    })
+  ),
+  label: str({ description: "The choice.", minLength: 1 }),
+});
 
-const QuestionSchema = Type.Object(
-  {
-    body: Type.Optional(
-      Type.String({
-        description: "More context, shown under the title.",
-        minLength: 1,
-      })
-    ),
-    choices: Type.Optional(
-      Type.Array(ChoiceSchema, {
-        description: "Choices to pick from. Leave out for free text.",
-        minItems: 1,
-      })
-    ),
-    title: Type.String({ description: "The question.", minLength: 1 }),
-  },
-  { additionalProperties: false }
-);
-
-const AskInputSchema = Type.Object(
-  {
-    questions: Type.Array(QuestionSchema, {
-      description: "Questions to ask in order, one card each.",
+const QuestionSchema = obj({
+  body: opt(
+    str({
+      description: "More context, shown under the title.",
+      minLength: 1,
+    })
+  ),
+  choices: opt(
+    arr(ChoiceSchema, {
+      description: "Choices to pick from. Leave out for free text.",
       minItems: 1,
-    }),
-    timeoutSeconds: Type.Optional(
-      Type.Integer({
-        description: "Seconds to wait for all answers before giving up.",
-        minimum: 10,
-      })
-    ),
-  },
-  { additionalProperties: false }
-);
+    })
+  ),
+  title: str({ description: "The question.", minLength: 1 }),
+});
 
-const AnswerSchema = Type.Union([
-  Type.Object(
-    {
-      index: Type.Integer(),
-      kind: Type.Literal("chose"),
-      label: Type.String(),
-      question: Type.Integer(),
-    },
-    { additionalProperties: false }
+const AskInputSchema = obj({
+  questions: arr(QuestionSchema, {
+    description: "Questions to ask in order, one card each.",
+    minItems: 1,
+  }),
+  timeoutSeconds: opt(
+    int({
+      description: "Seconds to wait for all answers before giving up.",
+      minimum: 10,
+    })
   ),
-  Type.Object(
-    {
-      kind: Type.Literal("typed"),
-      question: Type.Integer(),
-      text: Type.String(),
-    },
-    { additionalProperties: false }
-  ),
-  Type.Object(
-    { kind: Type.Literal("rephrase"), question: Type.Integer() },
-    { additionalProperties: false }
-  ),
+});
+
+const AnswerSchema = union([
+  obj({ index: int(), kind: lit("chose"), label: str(), question: int() }),
+  obj({ kind: lit("typed"), question: int(), text: str() }),
+  obj({ kind: lit("rephrase"), question: int() }),
 ]);
 
-const StopSchema = Type.Object(
-  {
-    kind: Type.Union([Type.Literal("dismissed"), Type.Literal("timed_out")]),
-    question: Type.Integer(),
-    unasked: Type.Integer(),
-  },
-  { additionalProperties: false }
-);
+const StopSchema = obj({
+  kind: oneOf(["dismissed", "timed_out"]),
+  question: int(),
+  unasked: int(),
+});
 
-const AskDetailsSchema = Type.Object(
-  {
-    answers: Type.Array(AnswerSchema),
-    stop: Type.Optional(StopSchema),
-  },
-  { additionalProperties: false }
-);
+const AskDetailsSchema = obj({
+  answers: arr(AnswerSchema),
+  stop: opt(StopSchema),
+});
 
 type Question = Static<typeof QuestionSchema>;
 
@@ -115,15 +91,19 @@ type AskDetails = Static<typeof AskDetailsSchema>;
 type Surface = "t3" | "terminal";
 
 // The call as the model sent it, before AskInputSchema rejects extra fields.
-const RawChoiceSchema = Type.Object({});
+const RawChoiceSchema = obj({}, { open: true });
 
-const RawQuestionSchema = Type.Object({
-  choices: Type.Optional(Type.Array(RawChoiceSchema)),
-});
+const RawQuestionSchema = obj(
+  { choices: opt(arr(RawChoiceSchema)) },
+  { open: true }
+);
 
-const RawAskSchema = Type.Object({
-  questions: Type.Optional(Type.Array(RawQuestionSchema)),
-});
+const RawAskSchema = obj(
+  { questions: opt(arr(RawQuestionSchema)) },
+  { open: true }
+);
+
+const isRawAsk = compile(RawAskSchema).check;
 
 type RawCall =
   | Static<typeof RawAskSchema>
@@ -294,7 +274,7 @@ const askTool = defineTool({
   annotations: { readOnlyHint: true },
   description:
     'Ask the user and wait for the answer. Each question becomes one card, asked in order. Put your recommendation first and mark it in the label, e.g. "SQLite (recommended)". Put the reason in `description`, which is shown under the question. The user can always type their own answer instead of picking. To let them pick several, say so in `body`. They will type something like "1 and 3" or "all". Leave out `choices` for free text. If a typed answer is a question or pushback, reply to it before you act. If the user dismisses a card, stop and wait for their next message.',
-  execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+  execute: async (_toolCallId, params: AskInput, signal, _onUpdate, ctx) => {
     if (!ctx.hasUI) {
       throw new Error(
         "ask needs an interactive client, such as T3 Code or the Pi terminal."
@@ -373,7 +353,7 @@ const askTool = defineTool({
   outputSchema: AskDetailsSchema,
   parameters: AskInputSchema,
   prepareArguments: (args) => {
-    if (Value.Check(RawAskSchema, args)) {
+    if (isRawAsk(args)) {
       checkFields(args);
     }
 

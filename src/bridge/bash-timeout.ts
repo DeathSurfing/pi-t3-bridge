@@ -1,6 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import {
+  compile,
+  num,
+  obj,
+  opt,
+  str,
+  unknown,
+} from "@earendil-works/pi-schema";
 
 import { readConfig } from "./config.ts";
 
@@ -13,10 +19,11 @@ const DEFAULT_SECONDS = 300;
 export const bashTimeoutSeconds = (): number =>
   readConfig().bashTimeoutSeconds ?? DEFAULT_SECONDS;
 
-const BashInputSchema = Type.Object({
-  command: Type.String(),
-  timeout: Type.Optional(Type.Unknown()),
-});
+const isBashInput = compile(
+  obj({ command: str(), timeout: opt(unknown()) }, { open: true })
+).check;
+
+const isNumber = compile(num()).check;
 
 const TIMED_OUT = /Command timed out after \d+ seconds/u;
 
@@ -24,14 +31,14 @@ export const registerBashTimeout = (pi: ExtensionAPI): void => {
   pi.on("tool_call", (event) => {
     const { input } = event;
 
-    if (event.toolName !== "bash" || !Value.Check(BashInputSchema, input)) {
+    if (event.toolName !== "bash" || !isBashInput(input)) {
       return;
     }
 
     const cap = bashTimeoutSeconds();
 
     input.timeout =
-      Value.Check(Type.Number(), input.timeout) && input.timeout > 0
+      isNumber(input.timeout) && input.timeout > 0
         ? Math.min(input.timeout, cap)
         : cap;
   });

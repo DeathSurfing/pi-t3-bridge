@@ -3,7 +3,8 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { obj, opt, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import {
   escapeHtml,
@@ -117,15 +118,16 @@ const planCard = (title: string, plan: string): PlanCard => {
   };
 };
 
-const PlanSchema = Type.Object({
-  plan: Type.String({
-    description: "The plan in Markdown, as numbered steps.",
-    minLength: 1,
-  }),
-  title: Type.Optional(
-    Type.String({ description: "Short plan title.", minLength: 1 })
-  ),
-});
+const PlanSchema = obj(
+  {
+    plan: str({
+      description: "The plan in Markdown, as numbered steps.",
+      minLength: 1,
+    }),
+    title: opt(str({ description: "Short plan title.", minLength: 1 })),
+  },
+  { open: true }
+);
 
 interface PlanToolDetails {
   readonly choice: PlanChoice | "dismissed";
@@ -177,7 +179,13 @@ export const registerPlanGate = (pi: ExtensionAPI): void => {
       annotations: { readOnlyHint: true },
       description:
         "Ask the user to approve a plan before any file changes. Until the user approves, only read-only tools run. On Revise, change the plan and call this tool again. On Cancel, stop: only read-only tools run until the user's next message.",
-      execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+      execute: async (
+        toolCallId,
+        params: Static<typeof PlanSchema>,
+        _signal,
+        _onUpdate,
+        ctx
+      ) => {
         if (!ctx.hasUI) {
           throw new Error(
             "Plan approval needs an interactive client, such as T3 Code or the Pi terminal."

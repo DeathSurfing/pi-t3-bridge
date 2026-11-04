@@ -8,8 +8,8 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { compile, nullable, obj, opt, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import { callT3Tool } from "../bridge/t3-http.ts";
 import type { LoadModeSpec } from "./package.ts";
@@ -39,10 +39,28 @@ Output only the prompt, with no preamble.`;
 
 const TITLE_LENGTH = 80;
 
-const LaunchSchema = Type.Object({
-  link: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  threadId: Type.String(),
-});
+const isLaunched = compile(
+  obj({ link: opt(nullable(str())), threadId: str() }, { open: true })
+).check;
+
+const HandoffSchema = obj(
+  {
+    goal: str({ description: "The goal/task for the new thread" }),
+    mode: opt(
+      str({
+        description:
+          "Amplike mode name to start the new thread with (e.g. 'rush', 'smart', 'deep')",
+      })
+    ),
+    model: opt(
+      str({
+        description:
+          "Model to start the new thread with, as provider/modelId (e.g. 'anthropic/claude-haiku-4-5')",
+      })
+    ),
+  },
+  { open: true }
+);
 
 const summarize = async (
   ctx: ExtensionContext,
@@ -123,7 +141,7 @@ const handoff = async (
         modelSelection: { ...applyChange(await currentSelection(), change) },
       });
 
-  if (!Value.Check(LaunchSchema, launched)) {
+  if (!isLaunched(launched)) {
     throw new Error("t3_thread_launch returned no thread.");
   }
 
@@ -134,7 +152,13 @@ export const handoffTool = (loadModeSpec: LoadModeSpec) =>
   defineTool({
     description:
       "Transfer context to a new focused T3 thread. ONLY use this when the user explicitly asks for a handoff. Provide a goal describing what the new thread should focus on. The result is the new thread's link, which you show the user verbatim.",
-    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+    execute: async (
+      _toolCallId,
+      params: Static<typeof HandoffSchema>,
+      signal,
+      _onUpdate,
+      ctx
+    ) => {
       const link = await handoff(
         ctx,
         params.goal,
@@ -150,21 +174,7 @@ export const handoffTool = (loadModeSpec: LoadModeSpec) =>
     },
     label: "Handoff",
     name: "handoff",
-    parameters: Type.Object({
-      goal: Type.String({ description: "The goal/task for the new thread" }),
-      mode: Type.Optional(
-        Type.String({
-          description:
-            "Amplike mode name to start the new thread with (e.g. 'rush', 'smart', 'deep')",
-        })
-      ),
-      model: Type.Optional(
-        Type.String({
-          description:
-            "Model to start the new thread with, as provider/modelId (e.g. 'anthropic/claude-haiku-4-5')",
-        })
-      ),
-    }),
+    parameters: HandoffSchema,
   });
 
 export const handoffCommand = (loadModeSpec: LoadModeSpec): Command => ({

@@ -2,9 +2,8 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import { compile, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import type { Classified } from "./failures.ts";
 import { callT3Tool, insideT3 } from "./t3-http.ts";
@@ -24,13 +23,20 @@ const AFTER_RESET_MS = 2 * 60_000;
 
 const MARKER = /\[pi-t3-resume (?<marker>[\w-]+)\]/u;
 
-const ResumeSchema = Type.Object({
-  marker: Type.String(),
-  scheduledTaskId: Type.Optional(Type.String()),
-  state: Type.Union([Type.Literal("scheduled"), Type.Literal("done")]),
-});
+const ResumeSchema = obj(
+  {
+    marker: str(),
+    scheduledTaskId: opt(str()),
+    state: oneOf(["scheduled", "done"]),
+  },
+  { open: true }
+);
 
-const ScheduledSchema = Type.Object({ scheduledTaskId: Type.String() });
+const isResume = compile(ResumeSchema).check;
+
+const isScheduled = compile(
+  obj({ scheduledTaskId: str() }, { open: true })
+).check;
 
 const resumes = (ctx: ExtensionContext) =>
   ctx.sessionManager
@@ -38,7 +44,7 @@ const resumes = (ctx: ExtensionContext) =>
     .flatMap((entry) =>
       entry.type === "custom" &&
       entry.customType === RESUME_ENTRY &&
-      Value.Check(ResumeSchema, entry.data)
+      isResume(entry.data)
         ? [entry.data]
         : []
     );
@@ -94,7 +100,7 @@ export const scheduleResume = async (
       state: "scheduled",
     };
 
-    if (Value.Check(ScheduledSchema, result)) {
+    if (isScheduled(result)) {
       scheduled.scheduledTaskId = result.scheduledTaskId;
     }
 

@@ -5,6 +5,8 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { pathToFileURL } from "node:url";
 
+import { obj, opt, str, unknown } from "@earendil-works/pi-schema";
+
 const extensionDir = path.dirname(import.meta.dirname);
 
 const installRoot =
@@ -29,10 +31,6 @@ const piSdk = await import(
 
 const piAi = await import(
   pathToFileURL(path.join(modulesRoot, "pi-ai/dist/index.js"))
-);
-
-const { Type } = await import(
-  pathToFileURL(path.join(modulesRoot, "../typebox/build/index.mjs"))
 );
 
 const liveCatalog = JSON.parse(
@@ -89,10 +87,13 @@ const delegateTool = (pi) => {
     },
     label: "delegate_task",
     name: "mcp__t3-code__delegate_task",
-    parameters: Type.Object({
-      target: Type.Optional(Type.Unknown()),
-      task: Type.String(),
-    }),
+    parameters: obj(
+      {
+        target: opt(unknown()),
+        task: str(),
+      },
+      { open: true }
+    ),
   });
 };
 
@@ -119,7 +120,7 @@ const catalogTool = (catalog, bridged) => (pi) => {
     exposure: "deferred",
     label: "orchestrator_capabilities",
     name: "mcp__t3-code__orchestrator_capabilities",
-    parameters: Type.Object({}),
+    parameters: obj({}, { open: true }),
   });
 };
 

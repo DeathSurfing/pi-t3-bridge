@@ -1,11 +1,12 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { compile, str } from "@earendil-works/pi-schema";
 
 // The child's extension reads its limits from the delegation brief
 // (skills/poteto-mode/brief.md).
 
 export type Size = "S" | "M" | "L";
+
+const isString = compile(str()).check;
 
 export interface Brief {
   readonly acceptance: string | undefined;
@@ -266,7 +267,7 @@ export const sessionBrief = (
 
   const { content } = first.message;
 
-  const text = Value.Check(Type.String(), content)
+  const text = isString(content)
     ? content
     : content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 

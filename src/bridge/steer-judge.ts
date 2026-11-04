@@ -10,9 +10,20 @@ import type {
   Model,
 } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static, TSchema } from "typebox";
-import { Value } from "typebox/value";
+import {
+  arr,
+  compile,
+  int,
+  lit,
+  map,
+  num,
+  obj,
+  oneOf,
+  opt,
+  str,
+  unknown,
+} from "@earendil-works/pi-schema";
+import type { Schema, Static } from "@earendil-works/pi-schema";
 
 import { readConfig } from "./config.ts";
 import type { MastExcerpt, StopInput } from "./steer-transcript.ts";
@@ -22,11 +33,11 @@ import type { MastExcerpt, StopInput } from "./steer-transcript.ts";
 // github.com/dbreunig/pi-mast-steer): any failure becomes an error value, so a
 // judge that is down never blocks a session.
 
-const StopKindSchema = Type.Union([
-  Type.Literal("done"),
-  Type.Literal("blocked"),
-  Type.Literal("asked_permission"),
-  Type.Literal("gave_up_midway"),
+const StopKindSchema = oneOf([
+  "done",
+  "blocked",
+  "asked_permission",
+  "gave_up_midway",
 ]);
 
 export type StopKind = Static<typeof StopKindSchema>;
@@ -39,42 +50,67 @@ export type StopVerdict =
     }
   | { readonly error: string };
 
-const BoolQuestionSchema = Type.Object({
-  criteria: Type.Object({ false: Type.String(), true: Type.String() }),
-  instructions: Type.String(),
-  type: Type.Literal("bool"),
-});
+const BoolQuestionSchema = obj(
+  {
+    criteria: obj({ false: str(), true: str() }, { open: true }),
+    instructions: str(),
+    type: lit("bool"),
+  },
+  { open: true }
+);
 
-const QuestionsFileSchema = Type.Object({
-  instructions: Type.String(),
-  questions: Type.Object({
-    handoff_missing: BoolQuestionSchema,
-    stop_kind: Type.Object({
-      criteria: Type.Record(Type.String(), Type.String()),
-      instructions: Type.String(),
-      type: Type.Literal("choice"),
-    }),
-    unfinished: BoolQuestionSchema,
-  }),
-  thresholds: Type.Object({
-    handoff: Type.Number(),
-    unfinished: Type.Number(),
-  }),
-});
+const QuestionsFileSchema = obj(
+  {
+    instructions: str(),
+    questions: obj(
+      {
+        handoff_missing: BoolQuestionSchema,
+        stop_kind: obj(
+          { criteria: map(str()), instructions: str(), type: lit("choice") },
+          { open: true }
+        ),
+        unfinished: BoolQuestionSchema,
+      },
+      { open: true }
+    ),
+    thresholds: obj({ handoff: num(), unfinished: num() }, { open: true }),
+  },
+  { open: true }
+);
 
-const BoolAnswerSchema = Type.Object({
-  probability: Type.Number(),
-  type: Type.Literal("bool"),
-});
+const isQuestionsFile = compile(QuestionsFileSchema).check;
 
-const AnswersSchema = Type.Object({
-  handoff_missing: Type.Optional(BoolAnswerSchema),
-  stop_kind: Type.Object({
-    choice: StopKindSchema,
-    type: Type.Literal("choice"),
-  }),
-  unfinished: BoolAnswerSchema,
-});
+const BoolAnswerSchema = obj(
+  { probability: num(), type: lit("bool") },
+  { open: true }
+);
+
+const isBoolAnswer = compile(BoolAnswerSchema).check;
+
+const isAnswers = compile(
+  obj(
+    {
+      handoff_missing: opt(BoolAnswerSchema),
+      stop_kind: obj(
+        { choice: StopKindSchema, type: lit("choice") },
+        { open: true }
+      ),
+      unfinished: BoolAnswerSchema,
+    },
+    { open: true }
+  )
+).check;
+
+const isAnswerSet = compile(map(unknown())).check;
+
+const ProbabilitySchema = num({ maximum: 1, minimum: 0 });
+
+const isProbability = compile(ProbabilitySchema).check;
+
+const isString = compile(str()).check;
+
+// JSON Schema's schema that no value matches.
+const NOTHING: Schema<never> = { not: {} };
 
 const readQuestions = (): Static<typeof QuestionsFileSchema> => {
   const questions: unknown = JSON.parse(
@@ -84,7 +120,7 @@ const readQuestions = (): Static<typeof QuestionsFileSchema> => {
     )
   );
 
-  if (!Value.Check(QuestionsFileSchema, questions)) {
+  if (!isQuestionsFile(questions)) {
     throw new TypeError(
       "steer-questions.json does not have the expected shape."
     );
@@ -102,20 +138,18 @@ const ANSWER_TOOL = "classifier_answers";
 
 // One flat argument per asked question: a bool is a probability, a choice is
 // one of its criteria keys. No caller asks a score question.
-const answerSchema = (question: ClassifierQuestion): TSchema => {
+const answerSchema = (question: ClassifierQuestion): Schema => {
   switch (question.type) {
     case "bool": {
-      return Type.Number({ maximum: 1, minimum: 0 });
+      return ProbabilitySchema;
     }
 
     case "choice": {
-      return Type.Union(
-        Object.keys(question.criteria).map((key) => Type.Literal(key))
-      );
+      return oneOf(Object.keys(question.criteria));
     }
 
     default: {
-      return Type.Never();
+      return NOTHING;
     }
   }
 };
@@ -139,16 +173,12 @@ type FlatAnswer =
   | { readonly choice: string; readonly type: "choice" };
 
 // Parses one flat value per question, checked against that question's own
-// schema, and turns it into the answer shape a classifier returns.
-const parseAnswers = <S extends TSchema>(
-  schema: S,
+// schema, and turns it into the answer shape a classifier returns. One value
+// for each question and no other field is what the tool's closed schema asks.
+const parseAnswers = (
   questions: ClassifierContext["questions"],
-  candidate: Static<S>
+  candidate: JsonObject
 ): Record<string, FlatAnswer> | undefined => {
-  if (!Value.Check(schema, candidate)) {
-    return undefined;
-  }
-
   if (Object.keys(candidate).length !== Object.keys(questions).length) {
     return undefined;
   }
@@ -160,7 +190,7 @@ const parseAnswers = <S extends TSchema>(
 
     switch (question.type) {
       case "bool": {
-        if (!Value.Check(Type.Number({ maximum: 1, minimum: 0 }), value)) {
+        if (!isProbability(value)) {
           return undefined;
         }
 
@@ -169,10 +199,7 @@ const parseAnswers = <S extends TSchema>(
       }
 
       case "choice": {
-        if (
-          !Value.Check(Type.String(), value) ||
-          !Value.Check(answerSchema(question), value)
-        ) {
+        if (!isString(value) || !Object.hasOwn(question.criteria, value)) {
           return undefined;
         }
 
@@ -195,14 +222,13 @@ const askChat = async (
   context: ClassifierContext,
   signal: AbortSignal
 ): Promise<Asked> => {
-  const schema = Type.Object(
+  const schema = obj(
     Object.fromEntries(
       Object.entries(context.questions).map(([name, question]) => [
         name,
         answerSchema(question),
       ])
-    ),
-    { additionalProperties: false }
+    )
   );
 
   try {
@@ -240,7 +266,7 @@ const askChat = async (
 
     const answers =
       call?.type === "toolCall"
-        ? parseAnswers(schema, context.questions, call.arguments)
+        ? parseAnswers(context.questions, call.arguments)
         : undefined;
 
     if (answers === undefined) {
@@ -372,7 +398,7 @@ export const judgeStop = async (
 
   const { answers } = result;
 
-  if (!Value.Check(AnswersSchema, answers)) {
+  if (!isAnswers(answers)) {
     return { error: "the classifier did not answer the stop questions" };
   }
 
@@ -391,33 +417,41 @@ export const judgeStop = async (
 // (MIT, github.com/dbreunig/pi-mast-steer, fixtures/dspy-request.json and
 // src/modes.ts). The questions and criteria are copied as they are, because
 // the thresholds were calibrated on them.
-const MastModeSchema = Type.Object({
-  code: Type.String(),
-  field: Type.String(),
-  label: Type.String(),
-  note: Type.String(),
-  threshold: Type.Number(),
-});
+const MastModeSchema = obj(
+  {
+    code: str(),
+    field: str(),
+    label: str(),
+    note: str(),
+    threshold: num(),
+  },
+  { open: true }
+);
 
 export type MastMode = Static<typeof MastModeSchema>;
 
-const MastFileSchema = Type.Object({
-  every: Type.Integer({ minimum: 1 }),
-  input_fields: Type.String(),
-  instructions: Type.String(),
-  modes: Type.Array(MastModeSchema),
-  questions: Type.Record(
-    Type.String(),
-    Type.Object({
-      // The DSPy criteria are nested objects, which TypeSafe accepts. The
-      // classifier types only describe the plain-text form.
-      criteria: Type.Unsafe<ClassifierBoolQuestion["criteria"]>(
-        Type.Object({}, { additionalProperties: true })
-      ),
-      instructions: Type.String(),
-    })
-  ),
-});
+// The DSPy criteria are nested objects, which TypeSafe accepts. The
+// classifier types only describe the plain-text form.
+const MastCriteriaSchema: Schema<ClassifierBoolQuestion["criteria"]> = {
+  additionalProperties: true,
+  properties: {},
+  type: "object",
+};
+
+const MastFileSchema = obj(
+  {
+    every: int({ minimum: 1 }),
+    input_fields: str(),
+    instructions: str(),
+    modes: arr(MastModeSchema),
+    questions: map(
+      obj({ criteria: MastCriteriaSchema, instructions: str() }, { open: true })
+    ),
+  },
+  { open: true }
+);
+
+const isMastFile = compile(MastFileSchema).check;
 
 const readMast = (): Static<typeof MastFileSchema> => {
   const mast: unknown = JSON.parse(
@@ -425,7 +459,7 @@ const readMast = (): Static<typeof MastFileSchema> => {
   );
 
   if (
-    !Value.Check(MastFileSchema, mast) ||
+    !isMastFile(mast) ||
     mast.modes.some((mode) => mast.questions[mode.field] === undefined)
   ) {
     throw new TypeError("steer-mast.json does not have the expected shape.");
@@ -479,7 +513,7 @@ export const judgeMast = async (
 
   const { answers } = result;
 
-  if (!Value.Check(Type.Record(Type.String(), Type.Unknown()), answers)) {
+  if (!isAnswerSet(answers)) {
     return { error: "the classifier did not answer the MAST questions" };
   }
 
@@ -488,7 +522,7 @@ export const judgeMast = async (
   for (const mode of mast.modes) {
     const answer = answers[mode.field];
 
-    if (!Value.Check(BoolAnswerSchema, answer)) {
+    if (!isBoolAnswer(answer)) {
       return { error: `no answer for ${mode.code}` };
     }
 

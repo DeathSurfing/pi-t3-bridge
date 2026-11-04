@@ -4,6 +4,15 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import {
+  compile,
+  num,
+  obj,
+  opt,
+  str,
+  unknown,
+} from "@earendil-works/pi-schema";
+
 export const extensionDir = path.dirname(import.meta.dirname);
 
 const installRoot =
@@ -30,13 +39,7 @@ export const piAi = await import(
   pathToFileURL(path.join(modulesRoot, "pi-ai/dist/index.js"))
 );
 
-const { Type } = await import(
-  pathToFileURL(path.join(modulesRoot, "../typebox/build/index.mjs"))
-);
-
-const { Value } = await import(
-  pathToFileURL(path.join(modulesRoot, "../typebox/build/value/index.mjs"))
-);
+const isString = compile(str()).check;
 
 export const liveCatalog = JSON.parse(
   await readFile(
@@ -49,7 +52,7 @@ export const textResult = (value) =>
   Promise.resolve({
     content: [
       {
-        text: Value.Check(Type.String(), value) ? value : JSON.stringify(value),
+        text: isString(value) ? value : JSON.stringify(value),
         type: "text",
       },
     ],
@@ -64,7 +67,7 @@ export const fakeT3 = (world) => (pi) => {
     exposure: "deferred",
     label: "orchestrator_capabilities",
     name: "mcp__t3-code__orchestrator_capabilities",
-    parameters: Type.Object({}),
+    parameters: obj({}, { open: true }),
   });
 
   pi.registerTool({
@@ -84,12 +87,15 @@ export const fakeT3 = (world) => (pi) => {
     },
     label: "delegate_task",
     name: "mcp__t3-code__delegate_task",
-    parameters: Type.Object({
-      isolation: Type.Optional(Type.String()),
-      mode: Type.Optional(Type.String()),
-      target: Type.Optional(Type.Unknown()),
-      task: Type.String(),
-    }),
+    parameters: obj(
+      {
+        isolation: opt(str()),
+        mode: opt(str()),
+        target: opt(unknown()),
+        task: str(),
+      },
+      { open: true }
+    ),
   });
 
   pi.registerTool({
@@ -97,7 +103,7 @@ export const fakeT3 = (world) => (pi) => {
     execute: () => textResult(world.taskStatus ?? { status: "running" }),
     label: "task_status",
     name: "mcp__t3-code__task_status",
-    parameters: Type.Object({ taskId: Type.String() }),
+    parameters: obj({ taskId: str() }, { open: true }),
   });
 
   pi.registerTool({
@@ -109,10 +115,13 @@ export const fakeT3 = (world) => (pi) => {
     },
     label: "t3_thread_send",
     name: "mcp__t3-code__t3_thread_send",
-    parameters: Type.Object({
-      message: Type.String(),
-      threadId: Type.String(),
-    }),
+    parameters: obj(
+      {
+        message: str(),
+        threadId: str(),
+      },
+      { open: true }
+    ),
   });
 
   pi.registerTool({
@@ -146,13 +155,16 @@ export const fakeT3 = (world) => (pi) => {
     exposure: "deferred",
     label: "t3_thread_read",
     name: "mcp__t3-code__t3_thread_read",
-    parameters: Type.Object({
-      afterPosition: Type.Optional(Type.Number()),
-      limit: Type.Optional(Type.Number()),
-      maxCharsPerItem: Type.Optional(Type.Number()),
-      threadId: Type.String(),
-      view: Type.Optional(Type.String()),
-    }),
+    parameters: obj(
+      {
+        afterPosition: opt(num()),
+        limit: opt(num()),
+        maxCharsPerItem: opt(num()),
+        threadId: str(),
+        view: opt(str()),
+      },
+      { open: true }
+    ),
   });
 };
 
@@ -339,7 +351,7 @@ export const startSession = async ({
           { stopReason: "toolUse" }
         )
       ),
-      Value.Check(Type.String(), end) ? piAi.fauxAssistantMessage(end) : end,
+      isString(end) ? piAi.fauxAssistantMessage(end) : end,
     ]);
     await session.prompt(prompt);
 

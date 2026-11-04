@@ -28,12 +28,13 @@
     {
       "matchPackageNames": [
         "@earendil-works/pi-ai",
-        "@earendil-works/pi-coding-agent"
+        "@earendil-works/pi-coding-agent",
+        "@earendil-works/pi-schema"
       ],
       "enabled": true,
       "groupName": "pi",
       "prBodyNotes": [
-        "Before merging: run `pi update`, then `npm ci && npm run check && npm run typecheck && npm test` on this branch. The tests load the Pi that `pi update` installed, and typecheck reads the new Pi types. The release notes above list new extension API features to adopt. If typecheck fails on TypeBox types, set the `typebox` devDependency to the version Pi's own package.json lists."
+        "Before merging: run `pi update`, then `npm ci && npm run check && npm run typecheck && npm test` on this branch. The tests load the Pi that `pi update` installed, and typecheck reads the new Pi types. The release notes above list new extension API features to adopt. Keep `@earendil-works/pi-schema` on the same version as Pi, because Pi validates tool arguments with it."
       ]
     },
     {
