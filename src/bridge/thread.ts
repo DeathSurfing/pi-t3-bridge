@@ -1,9 +1,10 @@
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { compile, obj, str } from "@earendil-works/pi-schema";
 
 import { callT3Tool, insideT3 } from "./t3-http.ts";
 
-const CapabilitiesSchema = Type.Object({ parentThreadId: Type.String() });
+const isCapabilities = compile(
+  obj({ parentThreadId: str() }, { open: true })
+).check;
 
 // T3 gives each delegated task's thread an ID with this prefix.
 const DELEGATED_THREAD = "thread:delegated-task:";
@@ -19,9 +20,7 @@ export const ownThreadId = async (): Promise<string | null> => {
   try {
     const result = await callT3Tool("orchestrator_capabilities", {});
 
-    return Value.Check(CapabilitiesSchema, result)
-      ? result.parentThreadId
-      : null;
+    return isCapabilities(result) ? result.parentThreadId : null;
   } catch {
     return null;
   }

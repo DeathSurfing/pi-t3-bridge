@@ -1,6 +1,6 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
+import { arr, bool, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import {
   escapeHtml,
@@ -10,31 +10,33 @@ import {
   wrappedLines,
 } from "./cards.ts";
 
-const TaskStatusSchema = Type.Union([
-  Type.Literal("pending"),
-  Type.Literal("in_progress"),
-  Type.Literal("completed"),
-]);
+const TaskStatusSchema = oneOf(["pending", "in_progress", "completed"]);
 
-const TaskStepSchema = Type.Object({
-  id: Type.String({
-    description: "Stable ID for this step. Keep it the same across updates.",
-    minLength: 1,
-  }),
-  status: TaskStatusSchema,
-  text: Type.String({ description: "What the step does.", minLength: 1 }),
-});
+const TaskStepSchema = obj(
+  {
+    id: str({
+      description: "Stable ID for this step. Keep it the same across updates.",
+      minLength: 1,
+    }),
+    status: TaskStatusSchema,
+    text: str({ description: "What the step does.", minLength: 1 }),
+  },
+  { open: true }
+);
 
-const TaskSnapshotSchema = Type.Object({
-  explanation: Type.Optional(
-    Type.String({ description: "Optional note about why the list changed." })
-  ),
-  steps: Type.Array(TaskStepSchema, {
-    description:
-      "The complete task list. Each call replaces the previous list.",
-    minItems: 1,
-  }),
-});
+const TaskSnapshotSchema = obj(
+  {
+    explanation: opt(
+      str({ description: "Optional note about why the list changed." })
+    ),
+    steps: arr(TaskStepSchema, {
+      description:
+        "The complete task list. Each call replaces the previous list.",
+      minItems: 1,
+    }),
+  },
+  { open: true }
+);
 
 type TaskStatus = Static<typeof TaskStatusSchema>;
 
@@ -127,10 +129,10 @@ const taskCardHeight = (snapshot: TaskSnapshot): number => {
   return height;
 };
 
-const TaskToolDetailsSchema = Type.Object({
-  rendered: Type.Boolean(),
-  snapshot: TaskSnapshotSchema,
-});
+const TaskToolDetailsSchema = obj(
+  { rendered: bool(), snapshot: TaskSnapshotSchema },
+  { open: true }
+);
 
 type TaskToolDetails = Static<typeof TaskToolDetailsSchema>;
 
@@ -138,7 +140,13 @@ export const tasksTool = defineTool({
   annotations: { readOnlyHint: true },
   description:
     "Publish the current task list for this run. Send the complete list every time, with stable step ids and at most one step in_progress. T3 shows the list as a task card in the chat.",
-  execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+  execute: async (
+    _toolCallId,
+    params: Static<typeof TaskSnapshotSchema>,
+    _signal,
+    _onUpdate,
+    ctx
+  ) => {
     checkSnapshot(params);
 
     const rendered = await renderInlineCard(ctx, {

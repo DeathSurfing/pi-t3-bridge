@@ -1,6 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { compile, nullable, obj, opt, str } from "@earendil-works/pi-schema";
 
 import { callT3Tool } from "../bridge/t3-http.ts";
 import type { LoadModeSpec } from "./package.ts";
@@ -14,10 +13,9 @@ import type { SelectionChange } from "./selection.ts";
 
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 
-const DelegatedSchema = Type.Object({
-  link: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  taskId: Type.String(),
-});
+const isDelegated = compile(
+  obj({ link: opt(nullable(str())), taskId: str() }, { open: true })
+).check;
 
 const TITLE_LENGTH = 80;
 
@@ -76,7 +74,7 @@ export const btwCommand = (loadModeSpec: LoadModeSpec): Command => ({
             target: await targetFor(change),
           });
 
-      if (!Value.Check(DelegatedSchema, delegated)) {
+      if (!isDelegated(delegated)) {
         throw new Error("delegate_task returned no task.");
       }
 

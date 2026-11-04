@@ -3,9 +3,19 @@ import type {
   ExtensionContext,
   ExtensionToolContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import {
+  arr,
+  bool,
+  compile,
+  lit,
+  nullable,
+  num,
+  obj,
+  opt,
+  str,
+  union,
+} from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import { classifyFailure } from "./failures.ts";
 import type { Classified } from "./failures.ts";
@@ -62,14 +72,15 @@ const NO_RESET_MS = 60 * 60_000;
 
 const USAGE_LIMIT_TITLE = "Usage limit reached";
 
-const AccountEventSchema = Type.Union([
-  Type.Object({
-    childThreadId: Type.String(),
-    family: Type.String(),
-    kind: Type.Literal("delegated"),
-  }),
-  Type.Object({ childThreadId: Type.String(), kind: Type.Literal("settled") }),
+const AccountEventSchema = union([
+  obj(
+    { childThreadId: str(), family: str(), kind: lit("delegated") },
+    { open: true }
+  ),
+  obj({ childThreadId: str(), kind: lit("settled") }, { open: true }),
 ]);
+
+const isAccountEvent = compile(AccountEventSchema).check;
 
 type AccountEvent = Static<typeof AccountEventSchema>;
 
@@ -100,7 +111,7 @@ export const readAccounts = (ctx: ExtensionContext): Accounts => {
     if (
       entry.type === "custom" &&
       entry.customType === ACCOUNT_ENTRY &&
-      Value.Check(AccountEventSchema, entry.data)
+      isAccountEvent(entry.data)
     ) {
       const event: AccountEvent = entry.data;
 
@@ -186,19 +197,23 @@ export const recordFailure = (
   updateFamily(modelFamily, record);
 };
 
-const ThreadReadSchema = Type.Object({
-  hasMore: Type.Boolean(),
-  items: Type.Array(
-    Type.Object({
-      text: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-      title: Type.Union([Type.String(), Type.Null()]),
-      type: Type.String(),
-    })
-  ),
-  nextPosition: Type.Union([Type.Number(), Type.Null()]),
-  recentRuns: Type.Optional(Type.Array(Type.Object({ status: Type.String() }))),
-  thread: Type.Object({ status: Type.String() }),
-});
+const ThreadReadSchema = obj(
+  {
+    hasMore: bool(),
+    items: arr(
+      obj(
+        { text: opt(nullable(str())), title: nullable(str()), type: str() },
+        { open: true }
+      )
+    ),
+    nextPosition: nullable(num()),
+    recentRuns: opt(arr(obj({ status: str() }, { open: true }))),
+    thread: obj({ status: str() }, { open: true }),
+  },
+  { open: true }
+);
+
+const threadRead = compile(ThreadReadSchema);
 
 type ThreadRead = Static<typeof ThreadReadSchema>;
 
@@ -217,16 +232,14 @@ const bridgeReader =
   async (params) => {
     const outcome = await ctx.executeTool(toolName, params);
 
-    return outcome.isError
-      ? undefined
-      : t3Json(ThreadReadSchema, outcome.result);
+    return outcome.isError ? undefined : t3Json(threadRead, outcome.result);
   };
 
 // A tool_result handler gets no ctx.executeTool, so it reads through T3 directly.
 export const httpReader: PageReader = async (params) => {
   const read = await callT3Tool("t3_thread_read", { ...params });
 
-  return Value.Check(ThreadReadSchema, read) ? read : undefined;
+  return threadRead.check(read) ? read : undefined;
 };
 
 type ChildOutcome =
@@ -358,27 +371,33 @@ const STATUS_TOOLS: ReadonlySet<string> = new Set([
   "mcp__t3__task_status",
 ]);
 
-const StatusSchema = Type.Object({
-  childThreadId: Type.String(),
-  status: Type.Optional(Type.String()),
-  workState: Type.Optional(Type.String()),
-});
+const taskStatus = compile(
+  obj(
+    { childThreadId: str(), status: opt(str()), workState: opt(str()) },
+    { open: true }
+  )
+);
 
-const DelegateInputSchema = Type.Object({
-  target: Type.Optional(Type.Object({ model: Type.String() })),
-});
+const isDelegateInput = compile(
+  obj({ target: opt(obj({ model: str() }, { open: true })) }, { open: true })
+).check;
 
-const DelegateResultSchema = Type.Object({ childThreadId: Type.String() });
+const delegateResult = compile(obj({ childThreadId: str() }, { open: true }));
 
 const sessionFamily = (ctx: ExtensionContext): string | undefined =>
   ctx.model === undefined ? undefined : family(ctx.model.id);
 
-const AssistantErrorSchema = Type.Object({
-  errorMessage: Type.Optional(Type.String()),
-  model: Type.String(),
-  role: Type.Literal("assistant"),
-  stopReason: Type.String(),
-});
+const isAssistantError = compile(
+  obj(
+    {
+      errorMessage: opt(str()),
+      model: str(),
+      role: lit("assistant"),
+      stopReason: str(),
+    },
+    { open: true }
+  )
+).check;
 
 // Recovery takes any family accounts.json records, such as kimi. Marking one
 // out takes only a family of a model Pi knows, so a typo cannot add one.
@@ -410,7 +429,7 @@ export const registerAccounts = (pi: ExtensionAPI): void => {
       return;
     }
 
-    const status = t3Json(StatusSchema, event);
+    const status = t3Json(taskStatus, event);
 
     const childFamily =
       status === undefined
@@ -437,11 +456,9 @@ export const registerAccounts = (pi: ExtensionAPI): void => {
       return;
     }
 
-    const result = t3Json(DelegateResultSchema, event);
+    const result = t3Json(delegateResult, event);
 
-    const input = Value.Check(DelegateInputSchema, event.input)
-      ? event.input
-      : undefined;
+    const input = isDelegateInput(event.input) ? event.input : undefined;
 
     const childFamily =
       input?.target === undefined
@@ -493,7 +510,7 @@ export const registerAccounts = (pi: ExtensionAPI): void => {
       (message) => (message as { role?: string }).role === "assistant"
     );
 
-    if (!Value.Check(AssistantErrorSchema, last)) {
+    if (!isAssistantError(last)) {
       lastRun = undefined;
     } else if (last.stopReason === "error") {
       lastRun = {

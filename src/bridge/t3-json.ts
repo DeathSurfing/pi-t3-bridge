@@ -1,12 +1,11 @@
-import { Type } from "typebox";
-import type { Static, TSchema } from "typebox";
-import { Value } from "typebox/value";
+import { compile, obj, str, unknown } from "@earendil-works/pi-schema";
+import type { Validator } from "@earendil-works/pi-schema";
 
-const ResultEnvelopeSchema = Type.Object({
-  structuredContent: Type.Unknown(),
-});
+const isResultEnvelope = compile(
+  obj({ structuredContent: unknown() }, { open: true })
+).check;
 
-const TextPartSchema = Type.Object({ text: Type.String() });
+const isTextPart = compile(obj({ text: str() }, { open: true })).check;
 
 export interface ToolOutput {
   readonly content: readonly unknown[];
@@ -14,34 +13,30 @@ export interface ToolOutput {
 }
 
 const textOf = (content: readonly unknown[]): string =>
-  content
-    .map((part) => (Value.Check(TextPartSchema, part) ? part.text : ""))
-    .join("");
+  content.map((part) => (isTextPart(part) ? part.text : "")).join("");
 
 // T3's in-thread bridge passes the whole MCP result as structuredContent,
 // a direct MCP client passes the server's structuredContent itself, and
 // some results carry their data only as JSON text.
-export const t3Json = <S extends TSchema>(
-  schema: S,
+export const t3Json = <T>(
+  validator: Validator<T>,
   output: ToolOutput
-): Static<S> | undefined => {
+): T | undefined => {
   const structured = output.structuredContent;
 
   const fromStructured = [
-    Value.Check(ResultEnvelopeSchema, structured)
-      ? structured.structuredContent
-      : undefined,
+    isResultEnvelope(structured) ? structured.structuredContent : undefined,
     structured,
-  ].find((candidate) => Value.Check(schema, candidate));
+  ].find((candidate) => validator.check(candidate));
 
-  if (Value.Check(schema, fromStructured)) {
+  if (validator.check(fromStructured)) {
     return fromStructured;
   }
 
   try {
     const parsed = JSON.parse(textOf(output.content));
 
-    return Value.Check(schema, parsed) ? parsed : undefined;
+    return validator.check(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }

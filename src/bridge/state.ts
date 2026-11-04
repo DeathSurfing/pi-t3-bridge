@@ -9,9 +9,19 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import {
+  compile,
+  lit,
+  map,
+  nullable,
+  num,
+  obj,
+  oneOf,
+  opt,
+  str,
+  union,
+} from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 // Machine-wide bridge state, shared by every Pi session: which model families
 // are out of usage, and one ledger line per delegated brief.
@@ -38,24 +48,29 @@ export const moveOldState = (): void => {
   }
 };
 
-const FamilyRecordSchema = Type.Union([
-  Type.Object({
-    reason: Type.Union([Type.Literal("exhausted"), Type.Literal("unhealthy")]),
-    resetAt: Type.Optional(Type.String()),
-    since: Type.String(),
-    source: Type.Union([Type.Literal("delegate"), Type.Literal("user")]),
-    state: Type.Literal("exhausted"),
-  }),
-  Type.Object({
-    childThreadId: Type.String(),
-    since: Type.String(),
-    state: Type.Literal("probing"),
-  }),
+const FamilyRecordSchema = union([
+  obj(
+    {
+      reason: oneOf(["exhausted", "unhealthy"]),
+      resetAt: opt(str()),
+      since: str(),
+      source: oneOf(["delegate", "user"]),
+      state: lit("exhausted"),
+    },
+    { open: true }
+  ),
+  obj(
+    { childThreadId: str(), since: str(), state: lit("probing") },
+    { open: true }
+  ),
 ]);
 
-const AccountsFileSchema = Type.Object({
-  families: Type.Record(Type.String(), FamilyRecordSchema),
-});
+const AccountsFileSchema = obj(
+  { families: map(FamilyRecordSchema) },
+  { open: true }
+);
+
+const isAccountsFile = compile(AccountsFileSchema).check;
 
 export type FamilyRecord = Static<typeof FamilyRecordSchema>;
 
@@ -67,7 +82,7 @@ export const readFamilies = (): AccountsFile["families"] => {
   try {
     const parsed: unknown = JSON.parse(readFileSync(accountsPath(), "utf-8"));
 
-    return Value.Check(AccountsFileSchema, parsed) ? parsed.families : {};
+    return isAccountsFile(parsed) ? parsed.families : {};
   } catch {
     return {};
   }
@@ -132,19 +147,24 @@ export const appendSteerLog = (line: {
   }
 };
 
-const LedgerLineSchema = Type.Object({
-  cacheRead: Type.Optional(Type.Number()),
-  cacheWrite: Type.Optional(Type.Number()),
-  cost: Type.Optional(Type.Number()),
-  input: Type.Optional(Type.Number()),
-  job: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  minutes: Type.Optional(Type.Number()),
-  model: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  report: Type.Optional(Type.String()),
-  status: Type.Optional(Type.String()),
-  threadId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  tokens: Type.Optional(Type.Number()),
-});
+const LedgerLineSchema = obj(
+  {
+    cacheRead: opt(num()),
+    cacheWrite: opt(num()),
+    cost: opt(num()),
+    input: opt(num()),
+    job: opt(nullable(str())),
+    minutes: opt(num()),
+    model: opt(nullable(str())),
+    report: opt(str()),
+    status: opt(str()),
+    threadId: opt(nullable(str())),
+    tokens: opt(num()),
+  },
+  { open: true }
+);
+
+const isLedgerLine = compile(LedgerLineSchema).check;
 
 export type LedgerLine = Static<typeof LedgerLineSchema>;
 
@@ -156,7 +176,7 @@ export const readLedger = (): LedgerLine[] => {
         try {
           const parsed: unknown = JSON.parse(line);
 
-          return Value.Check(LedgerLineSchema, parsed) ? [parsed] : [];
+          return isLedgerLine(parsed) ? [parsed] : [];
         } catch {
           return [];
         }

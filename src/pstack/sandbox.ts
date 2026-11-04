@@ -4,8 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { compile, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 
 import { readConfig } from "../bridge/config.ts";
 
@@ -24,11 +23,16 @@ const BWRAP_PATHS = ["/usr/bin/bwrap", "/usr/local/bin/bwrap"];
 
 const PROBE_TIMEOUT_MS = 10_000;
 
-const ProbeFailureSchema = Type.Object({
-  code: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-  message: Type.Optional(Type.String()),
-  stderr: Type.Optional(Type.String()),
-});
+const isProbeFailure = compile(
+  obj(
+    {
+      code: opt(union([num(), str()])),
+      message: opt(str()),
+      stderr: opt(str()),
+    },
+    { open: true }
+  )
+).check;
 
 export type Sandbox =
   | { kind: "bubblewrap"; bwrap: string }
@@ -146,7 +150,7 @@ const probeBwrap = async (bwrap: string): Promise<string | undefined> => {
 
     return undefined;
   } catch (error) {
-    const failed = Value.Check(ProbeFailureSchema, error) ? error : {};
+    const failed = isProbeFailure(error) ? error : {};
 
     return `bwrap cannot start: ${(failed.stderr || failed.message || "no output").trim()}`;
   }

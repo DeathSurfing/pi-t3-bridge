@@ -3,24 +3,33 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static, TSchema } from "typebox";
-import { Value } from "typebox/value";
+import {
+  compile,
+  map,
+  num,
+  oneOf,
+  str,
+  unknown,
+} from "@earendil-works/pi-schema";
+import type { Static, Validator } from "@earendil-works/pi-schema";
 
 // The bridge's settings, one JSON file per machine. Each key is checked on its
 // own, so one bad value falls back to its default and leaves the rest alone.
 // The file is read on every call, so an edit applies on the next prompt.
 
-const SteerSchema = Type.Union([
-  Type.Literal("on"),
-  Type.Literal("off"),
-  Type.Literal("shadow"),
-]);
+const SteerSchema = oneOf(["on", "off", "shadow"]);
 
-const ChildSandboxSchema = Type.Union([
-  Type.Literal("on"),
-  Type.Literal("off"),
-]);
+const ChildSandboxSchema = oneOf(["on", "off"]);
+
+const configFile = compile(map(unknown()));
+
+const fields = {
+  bashTimeoutSeconds: compile(num({ exclusiveMinimum: 0 })),
+  childSandbox: compile(ChildSandboxSchema),
+  classifierModel: compile(str({ pattern: "^[^/\\s]+/.+$" })),
+  mcpUrl: compile(str({ minLength: 1 })),
+  steer: compile(SteerSchema),
+};
 
 export interface Config {
   readonly bashTimeoutSeconds: number | undefined;
@@ -60,19 +69,16 @@ const parse = (text: string): Loaded => {
     return { config: EMPTY, problems: [`${file} is not valid JSON.`] };
   }
 
-  if (!Value.Check(Type.Record(Type.String(), Type.Unknown()), parsed)) {
+  if (!configFile.check(parsed)) {
     return { config: EMPTY, problems: [`${file} is not a JSON object.`] };
   }
 
   const problems: string[] = [];
 
-  const field = <S extends TSchema>(
-    key: string,
-    schema: S
-  ): Static<S> | undefined => {
+  const field = <T>(key: string, validator: Validator<T>): T | undefined => {
     const value = parsed[key];
 
-    if (value === undefined || Value.Check(schema, value)) {
+    if (value === undefined || validator.check(value)) {
       return value;
     }
 
@@ -87,15 +93,12 @@ const parse = (text: string): Loaded => {
     config: {
       bashTimeoutSeconds: field(
         "bashTimeoutSeconds",
-        Type.Number({ exclusiveMinimum: 0 })
+        fields.bashTimeoutSeconds
       ),
-      childSandbox: field("childSandbox", ChildSandboxSchema),
-      classifierModel: field(
-        "classifierModel",
-        Type.String({ pattern: "^[^/\\s]+/.+$" })
-      ),
-      mcpUrl: field("mcpUrl", Type.String({ minLength: 1 })),
-      steer: field("steer", SteerSchema),
+      childSandbox: field("childSandbox", fields.childSandbox),
+      classifierModel: field("classifierModel", fields.classifierModel),
+      mcpUrl: field("mcpUrl", fields.mcpUrl),
+      steer: field("steer", fields.steer),
     },
     problems,
   };

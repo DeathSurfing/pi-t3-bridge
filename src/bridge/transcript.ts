@@ -3,16 +3,19 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
+import { arr, obj, opt, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import { registerUnlessTaken } from "./claim.ts";
 
-export const TranscriptSchema = Type.Object({
-  branchEntryIds: Type.Array(Type.String()),
-  sessionFile: Type.Optional(Type.String()),
-  sessionId: Type.String(),
-});
+export const TranscriptSchema = obj(
+  {
+    branchEntryIds: arr(str()),
+    sessionFile: opt(str()),
+    sessionId: str(),
+  },
+  { open: true }
+);
 
 export type Transcript = Static<typeof TranscriptSchema>;
 
@@ -38,7 +41,7 @@ const transcriptTool = defineTool({
   label: "Transcript",
   name: "transcript",
   outputSchema: TranscriptSchema,
-  parameters: Type.Object({}),
+  parameters: obj({}, { open: true }),
 });
 
 export const registerTranscript = (pi: ExtensionAPI): void => {

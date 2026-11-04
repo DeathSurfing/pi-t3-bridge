@@ -6,6 +6,8 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { pathToFileURL } from "node:url";
 
+import { num, obj, str } from "@earendil-works/pi-schema";
+
 const extensionDir = path.dirname(import.meta.dirname);
 
 const installRoot =
@@ -30,10 +32,6 @@ const piSdk = await import(
 
 const piAi = await import(
   pathToFileURL(path.join(modulesRoot, "pi-ai/dist/index.js"))
-);
-
-const { Type } = await import(
-  pathToFileURL(path.join(modulesRoot, "../typebox/build/index.mjs"))
 );
 
 const temporary = await mkdtemp(path.join(tmpdir(), "pi-t3-bridge-tasks-"));
@@ -83,7 +81,7 @@ const stubTools = (pi) => {
     },
     label: "delegate_stub",
     name: "delegate_stub",
-    parameters: Type.Object({ task: Type.String() }),
+    parameters: obj({ task: str() }, { open: true }),
   });
 
   pi.registerTool({
@@ -96,7 +94,7 @@ const stubTools = (pi) => {
       }),
     label: "lookup_stub",
     name: "lookup_stub",
-    parameters: Type.Object({}),
+    parameters: obj({}, { open: true }),
   });
 };
 
@@ -114,11 +112,14 @@ const fakeHtmlRender = (calls) => (pi) => {
     exposure: "deferred",
     label: "html_render",
     name: "mcp__t3-code__html_render",
-    parameters: Type.Object({
-      height: Type.Number(),
-      html: Type.String(),
-      title: Type.String(),
-    }),
+    parameters: obj(
+      {
+        height: num(),
+        html: str(),
+        title: str(),
+      },
+      { open: true }
+    ),
   });
 };
 

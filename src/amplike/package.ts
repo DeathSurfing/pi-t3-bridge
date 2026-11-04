@@ -10,27 +10,38 @@ import type {
   ExtensionFactory,
   ResolvedResource,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import { compile, obj, opt, str, unknown } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 const PACKAGE_NAME = "pi-amplike";
 
-const ManifestSchema = Type.Object({ name: Type.String() });
+const isManifest = compile(obj({ name: str() }, { open: true })).check;
 
-const FactoryModuleSchema = Type.Object({
-  default: Type.Function([Type.Unknown()], Type.Unknown()),
-});
+// JSON Schema has no function type, so these check that the export exists and
+// isFunction checks that it is a function. Like TypeBox's Type.Function, the
+// check can't see the function's parameters, so the caller names them.
+const isFunction = <F extends (...args: never[]) => void>(
+  value: unknown
+): value is F => typeof value === "function";
 
-const ModeUtilsSchema = Type.Object({
-  loadModeSpec: Type.Function([Type.String(), Type.String()], Type.Unknown()),
-});
+const isFactoryModule = compile(
+  obj({ default: unknown() }, { open: true })
+).check;
 
-const ModeSpecSchema = Type.Object({
-  modelId: Type.Optional(Type.String()),
-  provider: Type.Optional(Type.String()),
-  thinkingLevel: Type.Optional(Type.String()),
-});
+const isModeUtils = compile(
+  obj({ loadModeSpec: unknown() }, { open: true })
+).check;
+
+const ModeSpecSchema = obj(
+  {
+    modelId: opt(str()),
+    provider: opt(str()),
+    thinkingLevel: opt(str()),
+  },
+  { open: true }
+);
+
+const isModeSpec = compile(ModeSpecSchema).check;
 
 export type ModeSpec = Static<typeof ModeSpecSchema>;
 
@@ -53,9 +64,7 @@ const isAmplikeRoot = (root: string): boolean => {
       readFileSync(path.join(root, "package.json"), "utf-8")
     );
 
-    return (
-      Value.Check(ManifestSchema, manifest) && manifest.name === PACKAGE_NAME
-    );
+    return isManifest(manifest) && manifest.name === PACKAGE_NAME;
   } catch {
     return false;
   }
@@ -97,12 +106,14 @@ export const findAmplike = async (
 export const loadFactory = async (file: string): Promise<ExtensionFactory> => {
   const module: unknown = await import(file);
 
-  if (!Value.Check(FactoryModuleSchema, module)) {
+  if (
+    !isFactoryModule(module) ||
+    !isFunction<ExtensionFactory>(module.default)
+  ) {
     throw new TypeError(`${file} has no default extension factory.`);
   }
 
-  // SAFETY: amplike's extension files default-export a Pi extension factory.
-  return module.default as ExtensionFactory;
+  return module.default;
 };
 
 // amplike's handoff and subagent read -mode through this helper, so the T3
@@ -111,13 +122,15 @@ export const loadModeSpecFrom = async (root: string): Promise<LoadModeSpec> => {
   const file = path.join(root, "extensions", "lib", "mode-utils.ts");
   const module: unknown = await import(file);
 
-  if (!Value.Check(ModeUtilsSchema, module)) {
+  if (!isModeUtils(module) || !isFunction<LoadModeSpec>(module.loadModeSpec)) {
     throw new TypeError(`${file} has no loadModeSpec export.`);
   }
 
-  return async (cwd, name) => {
-    const spec = await module.loadModeSpec(cwd, name);
+  const { loadModeSpec } = module;
 
-    return Value.Check(ModeSpecSchema, spec) ? spec : undefined;
+  return async (cwd, name) => {
+    const spec: unknown = await loadModeSpec(cwd, name);
+
+    return isModeSpec(spec) ? spec : undefined;
   };
 };

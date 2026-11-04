@@ -8,8 +8,17 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import {
+  arr,
+  bool,
+  compile,
+  num,
+  obj,
+  opt,
+  str,
+  union,
+  unknown,
+} from "@earendil-works/pi-schema";
 
 import { bashTimeoutSeconds } from "../bridge/bash-timeout.ts";
 import { appendLedger } from "../bridge/state.ts";
@@ -101,32 +110,39 @@ const remainingSeconds = (startedAt: number, brief: Brief): number =>
     ? Number.POSITIVE_INFINITY
     : startedAt / 1000 + brief.minutes * 60 - Date.now() / 1000;
 
-const ExecFailureSchema = Type.Object({
-  code: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-  killed: Type.Optional(Type.Boolean()),
-  stderr: Type.Optional(Type.String()),
-  stdout: Type.Optional(Type.String()),
-});
+const isExecFailure = compile(
+  obj(
+    {
+      code: opt(union([num(), str()])),
+      killed: opt(bool()),
+      stderr: opt(str()),
+      stdout: opt(str()),
+    },
+    { open: true }
+  )
+).check;
 
-const PolicySchema = Type.Object({
-  briefs: Type.Optional(
-    Type.Object({ redBeforeGreen: Type.Optional(Type.Array(Type.String())) })
-  ),
-});
+const isPolicy = compile(
+  obj(
+    {
+      briefs: opt(obj({ redBeforeGreen: opt(arr(str())) }, { open: true })),
+    },
+    { open: true }
+  )
+).check;
 
-const BashInputSchema = Type.Object({
-  command: Type.String(),
-  timeout: Type.Optional(Type.Unknown()),
-});
+const isBashInput = compile(
+  obj({ command: str(), timeout: opt(unknown()) }, { open: true })
+).check;
 
-const PathInputSchema = Type.Object({ path: Type.String() });
+const isPathInput = compile(obj({ path: str() }, { open: true })).check;
+
+const isNumber = compile(num()).check;
 
 const readRedBeforeGreen = (): readonly string[] => {
   const policy: unknown = JSON.parse(readFileSync(policyPath(), "utf-8"));
 
-  return Value.Check(PolicySchema, policy)
-    ? (policy.briefs?.redBeforeGreen ?? [])
-    : [];
+  return isPolicy(policy) ? (policy.briefs?.redBeforeGreen ?? []) : [];
 };
 
 const changedFiles = async (cwd: string): Promise<string[]> => {
@@ -253,9 +269,9 @@ export const registerChild = (pi: ExtensionAPI): void => {
 
       return { exit: 0, tail: `${stdout}${stderr}` };
     } catch (error) {
-      const failed = Value.Check(ExecFailureSchema, error) ? error : {};
+      const failed = isExecFailure(error) ? error : {};
 
-      const exit = Value.Check(Type.Number(), failed.code) ? failed.code : 124;
+      const exit = isNumber(failed.code) ? failed.code : 124;
 
       return {
         exit,
@@ -349,7 +365,7 @@ export const registerChild = (pi: ExtensionAPI): void => {
 
     const { input } = event;
 
-    if (event.toolName === "bash" && Value.Check(BashInputSchema, input)) {
+    if (event.toolName === "bash" && isBashInput(input)) {
       const wrapped = wrap(state.sandbox, input.command, ctx.cwd, state.gitDir);
 
       if (wrapped === undefined) {
@@ -361,7 +377,7 @@ export const registerChild = (pi: ExtensionAPI): void => {
 
       const limit = Math.max(1, Math.ceil(remaining));
 
-      input.timeout = Value.Check(Type.Number(), input.timeout)
+      input.timeout = isNumber(input.timeout)
         ? Math.min(input.timeout, limit)
         : limit;
       input.command = wrapped;
@@ -369,10 +385,7 @@ export const registerChild = (pi: ExtensionAPI): void => {
       return;
     }
 
-    if (
-      WRITE_TOOLS.has(event.toolName) &&
-      Value.Check(PathInputSchema, input)
-    ) {
+    if (WRITE_TOOLS.has(event.toolName) && isPathInput(input)) {
       const absolute = landing(
         path.resolve(ctx.cwd, input.path.replace(/^~(?=\/)/u, homedir()))
       );

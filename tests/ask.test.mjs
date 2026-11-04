@@ -7,6 +7,8 @@ import { after, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
+import { arr, obj, str } from "@earendil-works/pi-schema";
+
 const extensionDir = path.dirname(import.meta.dirname);
 
 const installRoot =
@@ -31,10 +33,6 @@ const piSdk = await import(
 
 const piAi = await import(
   pathToFileURL(path.join(modulesRoot, "pi-ai/dist/index.js"))
-);
-
-const { Type } = await import(
-  pathToFileURL(path.join(modulesRoot, "../typebox/build/index.mjs"))
 );
 
 const temporary = await mkdtemp(path.join(tmpdir(), "pi-t3-bridge-ask-"));
@@ -82,7 +80,7 @@ const stubTools = (delegated) => (pi) => {
     },
     label: "delegate_stub",
     name: "delegate_stub",
-    parameters: Type.Object({ task: Type.String() }),
+    parameters: obj({ task: str() }, { open: true }),
   });
 };
 
@@ -100,9 +98,12 @@ const foreignAsk = (foreign) => ({
       },
       label: "ask",
       name: "ask",
-      parameters: Type.Object({
-        prompts: Type.Array(Type.Object({ title: Type.String() })),
-      }),
+      parameters: obj(
+        {
+          prompts: arr(obj({ title: str() }, { open: true })),
+        },
+        { open: true }
+      ),
     });
 
     pi.on("session_start", () => {

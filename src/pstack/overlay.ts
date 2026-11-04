@@ -14,31 +14,29 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import { arr, compile, map, num, obj, str } from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 interface Patch {
   readonly find: string;
   readonly replace: string;
 }
 
-const PatchSchema = Type.Object({
-  find: Type.String(),
-  replace: Type.String(),
-});
+const PatchSchema = obj({ find: str(), replace: str() }, { open: true });
 
-const OverlayManifestSchema = Type.Object({
-  files: Type.Record(Type.String(), Type.Array(PatchSchema)),
-  global: Type.Array(PatchSchema),
-  shared: Type.Array(
-    Type.Object({
-      files: Type.Array(Type.String()),
-      patches: Type.Array(PatchSchema),
-    })
-  ),
-  version: Type.Number(),
-});
+const OverlayManifestSchema = obj(
+  {
+    files: map(arr(PatchSchema)),
+    global: arr(PatchSchema),
+    shared: arr(
+      obj({ files: arr(str()), patches: arr(PatchSchema) }, { open: true })
+    ),
+    version: num(),
+  },
+  { open: true }
+);
+
+const isOverlayManifest = compile(OverlayManifestSchema).check;
 
 export type OverlayManifest = Static<typeof OverlayManifestSchema>;
 
@@ -52,7 +50,7 @@ export const loadManifest = (dir: string): OverlayManifest => {
   const manifestPath = path.join(dir, "overlay.json");
   const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf-8"));
 
-  if (!Value.Check(OverlayManifestSchema, parsed)) {
+  if (!isOverlayManifest(parsed)) {
     throw new Error(
       `overlay manifest ${manifestPath} does not match the overlay schema`
     );

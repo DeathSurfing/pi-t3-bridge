@@ -5,6 +5,8 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { pathToFileURL } from "node:url";
 
+import { num, obj, opt, str, unknown } from "@earendil-works/pi-schema";
+
 import { brief } from "./harness.mjs";
 
 const extensionDir = path.dirname(import.meta.dirname);
@@ -31,10 +33,6 @@ const piSdk = await import(
 
 const piAi = await import(
   pathToFileURL(path.join(modulesRoot, "pi-ai/dist/index.js"))
-);
-
-const { Type } = await import(
-  pathToFileURL(path.join(modulesRoot, "../typebox/build/index.mjs"))
 );
 
 const liveCatalog = JSON.parse(
@@ -97,7 +95,7 @@ const fakeT3 = (world) => (pi) => {
     exposure: "deferred",
     label: "orchestrator_capabilities",
     name: "mcp__t3-code__orchestrator_capabilities",
-    parameters: Type.Object({}),
+    parameters: obj({}, { open: true }),
   });
 
   pi.registerTool({
@@ -117,10 +115,13 @@ const fakeT3 = (world) => (pi) => {
     },
     label: "delegate_task",
     name: "mcp__t3-code__delegate_task",
-    parameters: Type.Object({
-      target: Type.Optional(Type.Unknown()),
-      task: Type.String(),
-    }),
+    parameters: obj(
+      {
+        target: opt(unknown()),
+        task: str(),
+      },
+      { open: true }
+    ),
   });
 
   pi.registerTool({
@@ -158,12 +159,15 @@ const fakeT3 = (world) => (pi) => {
     exposure: "deferred",
     label: "t3_thread_read",
     name: "mcp__t3-code__t3_thread_read",
-    parameters: Type.Object({
-      limit: Type.Optional(Type.Number()),
-      maxCharsPerItem: Type.Optional(Type.Number()),
-      threadId: Type.String(),
-      view: Type.Optional(Type.String()),
-    }),
+    parameters: obj(
+      {
+        limit: opt(num()),
+        maxCharsPerItem: opt(num()),
+        threadId: str(),
+        view: opt(str()),
+      },
+      { open: true }
+    ),
   });
 };
 

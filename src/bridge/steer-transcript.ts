@@ -1,6 +1,5 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { compile, str } from "@earendil-works/pi-schema";
 
 // Turns the session branch into the text the stop judge reads. The rendering
 // follows pi-mast-steer's src/transcript.ts (MIT, github.com/dbreunig/pi-mast-steer):
@@ -79,8 +78,10 @@ export const handoffRule = (
   return undefined;
 };
 
+const isString = compile(str()).check;
+
 const textOf = (content: string | readonly Part[]): string =>
-  Value.Check(Type.String(), content)
+  isString(content)
     ? content
     : content
         .flatMap((part) =>

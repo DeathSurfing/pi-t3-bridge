@@ -6,8 +6,7 @@ import type {
   ExtensionContext,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { bool, compile, obj, opt, str } from "@earendil-works/pi-schema";
 
 import { TERMINAL_STATUSES } from "./accounts.ts";
 import { readConfig } from "./config.ts";
@@ -115,12 +114,19 @@ const DELEGATE_TOOL = /(?:^|__)delegate_task$/u;
 // Results that report one delegated task's state.
 const TASK_TOOL = /(?:^|__)(?:delegate_task|task_status|task_cancel)$/u;
 
-const TaskStateSchema = Type.Object({
-  hasPendingChildRuns: Type.Optional(Type.Boolean()),
-  status: Type.Optional(Type.String()),
-  taskId: Type.String(),
-  workState: Type.Optional(Type.String()),
-});
+const taskState = compile(
+  obj(
+    {
+      hasPendingChildRuns: opt(bool()),
+      status: opt(str()),
+      taskId: str(),
+      workState: opt(str()),
+    },
+    { open: true }
+  )
+);
+
+const isString = compile(str()).check;
 
 // How T3 wakes the parent, for example
 // "Delegated task node:… (Research pi stop lifecycle) [completed]".
@@ -140,7 +146,7 @@ const finishedTask = (task: {
 const userText = (entry: SessionEntry): string =>
   entry.type === "message" && entry.message.role === "user"
     ? t3Text({
-        content: Value.Check(Type.String(), entry.message.content)
+        content: isString(entry.message.content)
           ? [{ text: entry.message.content }]
           : entry.message.content,
       })
@@ -170,7 +176,7 @@ const waitingOnChild = (ctx: ExtensionContext): boolean => {
       TASK_TOOL.test(entry.message.toolName) &&
       !entry.message.isError
     ) {
-      const task = t3Json(TaskStateSchema, entry.message);
+      const task = t3Json(taskState, entry.message);
 
       if (task !== undefined && finishedTask(task)) {
         running.delete(task.taskId);

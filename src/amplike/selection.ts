@@ -1,22 +1,34 @@
-import { Type } from "typebox";
-import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import {
+  arr,
+  bool,
+  compile,
+  obj,
+  opt,
+  str,
+  union,
+} from "@earendil-works/pi-schema";
+import type { Static } from "@earendil-works/pi-schema";
 
 import { callT3Tool } from "../bridge/t3-http.ts";
 import type { LoadModeSpec } from "./package.ts";
 
-const OptionSchema = Type.Object({
-  id: Type.String(),
-  value: Type.Union([Type.String(), Type.Boolean()]),
-});
+const OptionSchema = obj(
+  { id: str(), value: union([str(), bool()]) },
+  { open: true }
+);
 
-const SelectionSchema = Type.Object({
-  instanceId: Type.Optional(Type.String()),
-  model: Type.String(),
-  options: Type.Optional(Type.Array(OptionSchema)),
-});
+const SelectionSchema = obj(
+  {
+    instanceId: opt(str()),
+    model: str(),
+    options: opt(arr(OptionSchema)),
+  },
+  { open: true }
+);
 
-const ConfigureSchema = Type.Object({ modelSelection: SelectionSchema });
+const isConfigured = compile(
+  obj({ modelSelection: SelectionSchema }, { open: true })
+).check;
 
 // T3's modelSelection for a Pi thread: model is "provider/modelId", and the
 // thinking level is the "thinking" option.
@@ -45,7 +57,7 @@ export const isEmptyChange = (change: SelectionChange): boolean =>
 export const currentSelection = async (): Promise<Selection> => {
   const result = await callT3Tool("t3_thread_configure", {});
 
-  if (!Value.Check(ConfigureSchema, result)) {
+  if (!isConfigured(result)) {
     throw new Error("t3_thread_configure returned no modelSelection.");
   }
 
