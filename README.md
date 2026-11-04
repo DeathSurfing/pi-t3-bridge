@@ -223,6 +223,26 @@ sequenceDiagram
     Note over Parent: the extension adds the report from the ledger
 ```
 
+## pi-amplike in T3
+
+`amplike.ts` adapts [pi-amplike](https://github.com/pasky/pi-amplike) for T3 threads. T3 shows Pi's `notify`, `select`, `confirm`, `input` and `editor` calls. It drops widgets, status lines, custom UI and key presses, and it resumes a thread from the session file it first recorded. So in T3, amplike's subagents, `/btw` and handoff show nothing or break. To use the adapter, turn off amplike's own extensions in `~/.pi/agent/settings.json` and keep its skills:
+
+```json
+{ "source": "npm:pi-amplike", "extensions": [] }
+```
+
+`amplike.ts` then loads amplike's extensions itself. Outside T3 they load unchanged. In a T3 thread, the adapter changes these parts:
+
+| amplike | In a T3 thread |
+| --- | --- |
+| `subagent` tool | Off. T3's `delegate_task` runs subagents. |
+| `/btw <prompt>` | Starts a `delegate_task` child that reads this thread's session with `session_query`. Its answer wakes this thread. |
+| `handoff` tool and `/handoff <goal>` | Writes a summary with the session model, then starts a new T3 thread with `t3_thread_launch`. The new thread gets the goal, the summary and the parent session file. This thread keeps its session. |
+| `/mode` | Works as in the terminal. Each model or thinking change also goes to `t3_thread_configure`, so T3's model picker matches. |
+| Shortcuts | Off. T3 sends Pi no key presses. |
+
+`session_query`, `/permissions` and amplike's skills work unchanged. While amplike still loads its own extensions, the adapter does nothing, and a T3 thread shows a notice with the settings change.
+
 ## Configuration
 
 The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Every key is optional. The bridge reads the file again on each prompt, so an edit applies on the next prompt. When one value is invalid, only the invalid key falls back to its default, and the bridge tells you once.
