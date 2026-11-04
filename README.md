@@ -1,6 +1,6 @@
 # pi-t3-bridge
 
-pi-t3-bridge is a [Pi](https://pi.dev) package that lets Pi work as an agent inside [T3 Code](https://github.com/pingdotgg/t3code). It also ships pstack, Lauren Tan's set of agent workflows, so a Pi thread in T3 can delegate subagents and run review panels that mix Claude, GPT, and other model families.
+pi-t3-bridge is a [Pi](https://pi.dev) package that lets Pi run as an agent inside [T3 Code](https://github.com/pingdotgg/t3code). It also ships the pstack and tstack skill sets, and it adapts [pi-amplike](https://github.com/pasky/pi-amplike) so that amplike's commands work in a T3 thread.
 
 ```mermaid
 flowchart LR
@@ -8,12 +8,17 @@ flowchart LR
     T3 -->|runs a thread| Pi[Pi agent]
     subgraph pkg [pi-t3-bridge]
         Bridge[bridge.ts<br/>T3 tools, cards, limits]
-        Pstack[pstack.ts<br/>skills and model routing]
+        Pstack[pstack.ts<br/>pstack skills, model routing]
+        Tstack[tstack.ts<br/>tstack skills]
+        Amplike[amplike.ts<br/>pi-amplike in T3]
     end
     Pi --> Bridge
     Pi --> Pstack
+    Pi --> Tstack
+    Pi --> Amplike
     Bridge -->|MCP| T3
     Pstack -->|delegate_task| T3
+    Amplike -->|t3_thread_launch, delegate_task| T3
     T3 -->|child threads| Children[Claude, GPT, and other models]
 ```
 
@@ -25,9 +30,9 @@ You need the following programs:
 - Pi 1.4.0 or later
 - T3 Code, if you want to run Pi threads inside T3 or call T3 tools from Pi
 
-Delegated children run their shell commands in a sandbox: `sandbox-exec` on macOS, and `bwrap` (bubblewrap) on Linux and WSL2. Linux needs the `bubblewrap` package and unprivileged user namespaces. On Ubuntu, the `bubblewrap` package ships an AppArmor profile that lets `bwrap` run (checked on 26.04). If AppArmor still blocks it, run `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. Native Windows and WSL1 have no sandbox. Where no sandbox can run, a child's shell commands are blocked unless `childSandbox` is `"off"` in the config.
+A delegated child runs its shell commands in a sandbox, which is `sandbox-exec` on macOS and `bwrap` (bubblewrap) on Linux and WSL2. On Linux you need the `bubblewrap` package and unprivileged user namespaces. The Ubuntu `bubblewrap` package ships an AppArmor profile that lets `bwrap` run (checked on 26.04). If AppArmor still blocks `bwrap`, run `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 
-The tests need Docker, because they also run the child tests in Linux containers.
+Native Windows and WSL1 have no sandbox. Where no sandbox can run, the bridge blocks a child's shell commands, unless you set `childSandbox` to `"off"` in the settings file.
 
 ## Install
 
@@ -37,45 +42,42 @@ Install the package with Pi:
 pi install npm:pi-t3-bridge
 ```
 
-Pi loads both extensions in the package on the next start. To try the package for one session without saving it to your settings, run `pi -e npm:pi-t3-bridge`.
+Pi loads every extension in the package on the next start. To try the package for one session without saving it to your settings, run `pi -e npm:pi-t3-bridge`.
 
 ## What is in the package
 
-The package has two Pi extensions, and you can turn off either one. The bridge in `bridge.ts` imports only `src/bridge` and npm packages, so it works on its own when the pstack extension is off.
+The package has four Pi extensions, and you can turn off any of them. None of the extensions needs another one to be loaded, although `pstack.ts` and `amplike.ts` reuse code from `src/bridge`.
 
 ```text
 pi-t3-bridge/
-├── bridge.ts         # extension 1: connects Pi to T3 Code
-├── pstack.ts         # extension 2: adds pstack skills and model routing
+├── bridge.ts       # connects Pi to T3 Code
+├── pstack.ts       # serves pstack skills and picks models for subagents
+├── tstack.ts       # serves tstack skills
+├── amplike.ts      # loads pi-amplike and adapts it for T3 threads
 ├── src/
-│   ├── bridge/       # code for bridge.ts
-│   └── pstack/       # code for pstack.ts
-└── pstack/           # upstream pstack skills, agents, and model defaults
-    ├── skills/
-    ├── agents/
-    └── models.json
+│   ├── bridge/     # code for bridge.ts
+│   ├── pstack/     # code for pstack.ts
+│   └── amplike/    # code for amplike.ts
+├── pstack/         # upstream pstack skills, agents, and model defaults
+├── overlay/        # the changes Pi needs on top of pstack/
+└── tstack/         # Theo Browne's tstack skills
 ```
 
-To load only the bridge, list the package in `~/.pi/agent/settings.json` in its object form:
+To load only some extensions, list the package in `~/.pi/agent/settings.json` in its object form:
 
 ```json
 {
-  "packages": [
-    {
-      "source": "npm:pi-t3-bridge",
-      "extensions": ["bridge.ts"]
-    }
-  ]
+  "packages": [{ "source": "npm:pi-t3-bridge", "extensions": ["bridge.ts"] }]
 }
 ```
 
 ## The bridge extension
 
-The bridge gives Pi the tools and commands that T3 Code expects, and it shows them as cards in the T3 chat. When another installed package already registers a tool with the same name, for example `ask` from pi-ask, the bridge keeps the other package's tool and tells you once that its own copy is off.
+The bridge gives Pi the tools and commands that T3 Code expects, and it shows them as cards in the T3 chat. When another installed package already registers a tool with the same name, e.g. `ask` from pi-ask, the bridge keeps the other package's tool and tells you once that its own copy is off.
 
 | Name | Kind | What it does |
 | --- | --- | --- |
-| `tasks` | tool | Publishes the task list for the run as a card in the chat. |
+| `tasks` | tool | Shows the task list for the run as a card in the chat. |
 | `plan` | tool | Shows a plan card with Approve, Revise, and Cancel buttons. |
 | `ask` | tool | Asks you one or more questions as cards and waits for your answers. |
 | `transcript` | tool | Returns the session file and session ID, for workflows that read the transcript. |
@@ -86,7 +88,7 @@ The bridge gives Pi the tools and commands that T3 Code expects, and it shows th
 
 ### Plan mode
 
-When T3 is in Plan mode, or when a plan is waiting for your answer, the bridge blocks every tool that can change files. Only read-only tools run until you approve a plan.
+When T3 is in Plan mode, or when a plan card waits for your answer, the bridge blocks every tool that can change files. Read-only tools still run, so the agent can read files while you decide.
 
 ```mermaid
 stateDiagram-v2
@@ -101,9 +103,9 @@ stateDiagram-v2
     approved --> [*]: write tools run again
 ```
 
-### Calls to T3 from outside T3
+### Calls to T3 from a terminal
 
-When you run Pi in a terminal instead of inside a T3 thread, the bridge adds T3's MCP server, which is the endpoint that T3 Code serves its tools on. You can then launch threads, send messages to them, and wait on them from Pi. The status bar shows the connection state.
+When you run Pi in a terminal instead of a T3 thread, the bridge connects Pi to T3's MCP server, which is the endpoint where T3 Code serves its tools. You can then start threads, send messages to them, and wait on them from the terminal, and the status bar shows whether the connection works.
 
 ```text
 on(session start)
@@ -120,7 +122,7 @@ on(session start)
 
 ### Usage limits and resume
 
-The bridge keeps track of which model families are out of usage, and it shares that record with every Pi session on the machine. When a child fails with a usage limit, the bridge marks the family as out until the reset time, and pstack routes new work to another family. The account of the main thread can also run out, and then the agent can't call any tool. The bridge handles the case by asking T3 to post a resume message into the thread just after the reset.
+The bridge records which model families are out of usage, and every Pi session on the machine reads the same record. When a child fails with a usage limit, the bridge marks the family as out until its reset time, so pstack sends new work to another family.
 
 ```mermaid
 sequenceDiagram
@@ -136,76 +138,102 @@ sequenceDiagram
     Parent->>T3: delegate_task (next family)
 ```
 
-### Shell timeout
+The main thread's own account can also run out, and then the agent can't call any tool. When the main thread's account runs out, the bridge asks T3 to post a resume message into the thread just after the reset time.
 
-The bridge caps every shell command at 300 seconds, in the main thread and in children. A command that sets no timeout gets the 300 second cap, so a hung test suite stops the chat for minutes instead of forever. Set `bashTimeoutSeconds` in the config to change the cap.
+### Shell time limit
+
+The bridge stops any shell command after 300 seconds, in the main thread and in children, so a test suite that hangs stops the chat for 5 minutes at most. A command can ask for a shorter timeout but not a longer one, and you can change the limit with `bashTimeoutSeconds` in the settings file.
 
 ### Stop checks
 
-When a run is about to stop, the bridge asks a classifier how the run ended. It picks the classifier in this order:
-
-1. The chat model named by `classifierModel` in the config, as `"provider/modelId"`.
-2. `typesafe/jev-latest`, when it is in your Pi model catalog and you have access to it.
-3. The model of the current session.
-
-A chat model gets the same questions through one tool call, and the bridge reads its answers from the tool arguments. A chat model's probabilities are its own estimates. They are not calibrated like Jev's, and the stop thresholds were fitted on Jev, so a chat model may nudge more or less often. If Jev is available but its call fails, the bridge does not fall back to a chat model. A `classifierModel` that is not in the catalog or has no auth is an error, and the bridge does not fall back from it either. When the classifier says the agent gave up partway, the bridge adds a note and gives the agent one more turn, at most twice per prompt. Every 3 turns during a run, the bridge also asks the classifier whether the agent shows a known failure, and it adds a note when one is likely. The failures it checks for come from the MAST list of agent failures:
-
-- Stuck in a loop
-- Doesn't know when to stop
-- Wandered off
-- Broke the brief, and says one thing but does another
+When a run is about to stop, the bridge asks a classifier model how the run ended, and it gives the agent one more turn when the agent gave up partway. The checks come from [pi-mast-steer](https://github.com/dbreunig/pi-mast-steer).
 
 ```text
 on(run about to stop)
   ask the classifier how the run ended
   if the classifier is down or takes more than 5 seconds
     let the run stop
-  if the agent gave up partway and fewer than 2 notes were sent for this prompt
+  if the agent gave up partway and fewer than 2 notes were sent for the current prompt
     add a note
     continue for one more turn
+
+every 3 turns
+  ask the classifier whether the agent shows a known failure
+  if one is likely
+    add a note that names it
 ```
 
-The stop check and the notes come from [pi-mast-steer](https://github.com/dbreunig/pi-mast-steer). Set `steer` to `"shadow"` in the config to log verdicts without changing the session, or to `"off"` to turn the checks off.
+The known failures come from the MAST list of agent failures:
 
-A chat-model judge costs tokens on your account, one call per stop check and one every 3 turns.
+- Stuck in a loop
+- Doesn't know when to stop
+- Wandered off
+- Broke the brief, or says one thing and does another
+
+The bridge picks the classifier in the order below, and it doesn't fall back to the next one when the chosen one fails.
+
+```text
+pick classifier
+  if classifierModel is set in the settings file
+    use that chat model, or report an error if it's not in the catalog or has no auth
+  else if typesafe/jev-latest is in your Pi model catalog and you have access
+    use Jev
+  else
+    use the session model
+```
+
+A chat model answers the same questions through one tool call. Its probabilities are its own guesses and not calibrated like Jev's, and the thresholds were fitted on Jev, so a chat model may add notes more or less often. A chat model also costs tokens on your account, with one call per stop check and one every 3 turns. Set `steer` to `"shadow"` to log the verdicts without changing the session, or to `"off"` to turn the checks off.
 
 ## The pstack extension
 
-The pstack extension adds the pstack skills to Pi's skill catalog, and it adds a note to each prompt that tells the agent when to enter `poteto-mode`. `poteto-mode` picks the workflow that fits your goal, for example a bug fix, a feature, a design review, or a PR watch. The skills come from [pstack](https://github.com/cursor/plugins/tree/main/pstack) by way of [t3-pstack](https://github.com/chhoumann/t3-pstack), and they live unchanged under `pstack/`.
+The pstack extension adds the pstack skills to Pi's skill list, and it adds a note to each prompt that tells the agent when to enter `poteto-mode`. The `poteto-mode` skill picks the workflow that fits your goal, e.g. a bug fix, a feature, a design review, or a PR watch.
+
+The skills come from [pstack](https://github.com/cursor/plugins/tree/main/pstack) by way of [t3-pstack](https://github.com/chhoumann/t3-pstack). The `pstack/` folder holds the upstream text unchanged, and `overlay/` holds the changes Pi needs.
+
+```text
+on(Pi start)
+  copy pstack/ to ~/.local/state/pi-t3/pstack-overlay/<hash>/
+  apply each change in overlay/ to the copy
+  serve the skills from the copy
+```
+
+When a change in `overlay/` no longer matches a new upstream text, the test run fails and names the file.
 
 ### Model routing
 
-The `pstack_model` tool picks the model for each subagent. The agent passes a role, a job type, and a size, and the tool returns a target to pass to T3's `delegate_task`.
+The `pstack_model` tool picks the model for each subagent. The agent passes a role, a job type, and a size, and the tool returns a target that the agent passes to T3's `delegate_task`.
 
 ```text
 pstack_model(role, job, size)
+  if size is L
+    refuse, so the agent splits the job
   if the model sheet names a model for the role
-    use that model
+    use the model from the sheet
   else
     look up the job and size in the routing table
-  if that model's family is out of usage
+  if the model's family is out of usage
     use the same tier in the next family
     (GPT takes only size S work)
   return the target for delegate_task
 ```
 
-The routing table in `pstack/models.json` maps each job and size to a default model and reasoning level. Size S is a job of 30 minutes or less that touches 5 files or fewer, and size M is a job of 90 minutes or less that touches 15 files or fewer. The tool refuses size L, so the agent has to split the job.
+The routing table lives in `pstack/models.json`. Size S is a job of 30 minutes or less that touches 5 files or fewer, and size M is a job of 90 minutes or less that touches 15 files or fewer.
 
 | Job | Size S | Size M |
 | --- | --- | --- |
-| `mechanical`, such as a lint fix or rename | Haiku 5.5, low | Sonnet 5.5, medium |
+| `mechanical`, e.g. a lint fix or rename | Haiku 5.5, low | Sonnet 5.5, medium |
 | `check`, which runs given commands | GPT 6 Luna, low | Haiku 5.5, medium |
 | `research`, which writes one notes file | Muse Spark 1.3, medium | Muse Wonder 1.0, medium |
 | `implement`, one unit with named tests | GPT 6.1 Sol, medium | Sonnet 5.5, high |
-| `hard`, such as concurrency or a bug with an unknown cause | Opus 5.5, high | Opus 5.5, high |
+| `hard`, e.g. concurrency or a bug with an unknown cause | Opus 5.5, high | Opus 5.5, high |
 | `review` panel | Opus 5.5, Muse Wonder Full 1.0, and GPT 6.1 Sol, all high | same |
 | `design` panel | Opus 5.5, Muse Wonder Full 1.0, and GPT 6 Astra, all high | same |
 
-Run the `setup-pstack` skill to write your own model sheet at `~/.config/pi-t3-bridge/models.md`. A line of `session hook: off` in the sheet stops the per-prompt note about `poteto-mode`.
+To choose your own models, run the `setup-pstack` skill, which writes a model sheet at `~/.config/pi-t3-bridge/models.md`. A line of `session hook: off` in the sheet stops the note about `poteto-mode` on each prompt.
 
 ### Limits for delegated children
 
-When the first message of a session is a complete pstack brief, the extension treats the session as a delegated child and holds it to the brief. The child can't lift the limits through anything it writes.
+When the first message of a session is a complete pstack brief, the extension treats the session as a delegated child and holds it to the limits in the brief. The child can't lift the limits through anything it writes.
 
 ```mermaid
 sequenceDiagram
@@ -223,29 +251,67 @@ sequenceDiagram
     Note over Parent: the extension adds the report from the ledger
 ```
 
-## pi-amplike in T3
+## The tstack extension
 
-`amplike.ts` adapts [pi-amplike](https://github.com/pasky/pi-amplike) for T3 threads. T3 shows Pi's `notify`, `select`, `confirm`, `input` and `editor` calls. It drops widgets, status lines, custom UI and key presses, and it resumes a thread from the session file it first recorded. So in T3, amplike's subagents, `/btw` and handoff show nothing or break. To use the adapter, turn off amplike's own extensions in `~/.pi/agent/settings.json` and keep its skills:
+The tstack extension serves Theo Browne's tstack skills from `tstack/skills`, which are babysit-pr, council, file-pr, full-send, full-stop, leaving-pr-comments, modernize, sol-loop, and takeover. It imports no other code from the package, so the skills stay available when you turn the other extensions off.
 
-```json
-{ "source": "npm:pi-amplike", "extensions": [] }
+## pi-amplike in T3 threads
+
+pi-amplike adds handoff, `/btw`, subagents, and prompt modes to Pi, but T3 can't show most of them. T3 shows Pi's `notify`, `select`, `confirm`, `input`, and `editor` calls, and it drops widgets, status lines, custom UI, and key presses. T3 also resumes a thread from the session file it first recorded, so a handoff that moves Pi to a new session file breaks the thread.
+
+To use the adapter, keep pi-amplike installed and turn off its own extensions in `~/.pi/agent/settings.json`. The adapter then loads amplike's extension files itself.
+
+```diff
+ "packages": [
+   "npm:pi-t3-bridge",
+-  "npm:pi-amplike"
++  { "source": "npm:pi-amplike", "extensions": [] }
+ ]
 ```
 
-`amplike.ts` then loads amplike's extensions itself. Outside T3 they load unchanged. In a T3 thread, the adapter changes these parts:
+```text
+on(Pi start)
+  find pi-amplike with Pi's package manager
+  if amplike still loads its own extensions
+    do nothing, and in a T3 thread show a notice with the settings change
+  else if Pi runs inside a T3 thread
+    load amplike's extensions with the T3 changes below
+  else
+    load amplike's extensions unchanged
+```
+
+In a T3 thread, the adapter changes the following parts of amplike:
 
 | amplike | In a T3 thread |
 | --- | --- |
-| `subagent` tool | Off. T3's `delegate_task` runs subagents. |
-| `/btw <prompt>` | Starts a `delegate_task` child that reads this thread's session with `session_query`. Its answer wakes this thread. |
-| `handoff` tool and `/handoff <goal>` | Writes a summary with the session model, then starts a new T3 thread with `t3_thread_launch`. The new thread gets the goal, the summary and the parent session file. This thread keeps its session. |
-| `/mode` | Works as in the terminal. Each model or thinking change also goes to `t3_thread_configure`, so T3's model picker matches. |
-| Shortcuts | Off. T3 sends Pi no key presses. |
+| `subagent` tool | The adapter turns it off, so subagents run through T3's `delegate_task` and show up in T3. |
+| `/btw <prompt>` | Starts a `delegate_task` child that reads the parent thread's session with `session_query`. The child's answer wakes the parent thread. |
+| `handoff` tool and `/handoff <goal>` | Writes a summary with the session model, then starts a new T3 thread. The current thread keeps its own session file. |
+| `/mode` | Works as in the terminal, and sends each model and thinking change to T3, so T3's model picker shows the same model. |
+| Shortcuts | The adapter turns them off, because T3 sends Pi no key presses. |
 
-`session_query`, `/permissions` and amplike's skills work unchanged. While amplike still loads its own extensions, the adapter does nothing, and a T3 thread shows a notice with the settings change.
+`session_query`, `/permissions`, and amplike's skills work unchanged. The diagram below shows the three commands that talk to T3.
 
-## Configuration
+```mermaid
+sequenceDiagram
+    participant You
+    participant Pi as Pi (amplike.ts)
+    participant T3
+    You->>Pi: /handoff fix the failing tests
+    Pi->>Pi: summarize the chat with the session model
+    Pi->>T3: t3_thread_launch(goal, summary, parent session file)
+    T3-->>You: link to the new thread
+    You->>Pi: /btw which file holds the parser?
+    Pi->>T3: delegate_task(question, parent session file)
+    T3-->>Pi: child's answer wakes the thread
+    You->>Pi: /mode rush
+    Pi->>Pi: set model and thinking level
+    Pi->>T3: t3_thread_configure(modelSelection)
+```
 
-The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Every key is optional. The bridge reads the file again on each prompt, so an edit applies on the next prompt. When one value is invalid, only the invalid key falls back to its default, and the bridge tells you once.
+## Settings
+
+The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Every key is optional. The bridge reads the file again on each prompt, so an edit applies on the next prompt. When a value is invalid, only the invalid key falls back to its default, and the bridge tells you once.
 
 ```json
 {
@@ -260,12 +326,12 @@ The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Ev
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `bashTimeoutSeconds` | `300` | The longest a shell command can run, in seconds. |
-| `childSandbox` | `"on"` | Whether a delegated child's shell commands need a sandbox. With `"on"`, a child's `bash` is blocked when no sandbox can run. With `"off"`, commands run with no sandbox on every platform, and the child's report says `SANDBOX: off`. |
-| `classifierModel` | unset | A chat model that judges the stop checks, as `"provider/modelId"`. The model id may contain more slashes. When unset, the bridge uses `typesafe/jev-latest` if it is available, and the session model if not. A chat model's probabilities are its own estimates, not Jev-calibrated. |
-| `mcpUrl` | `http://127.0.0.1:3773/mcp` | The T3 MCP endpoint to use outside a T3 thread. |
+| `childSandbox` | `"on"` | With `"on"`, a child's `bash` is blocked when no sandbox can run. With `"off"`, commands run with no sandbox on every platform, and the child's report says `SANDBOX: off`. |
+| `classifierModel` | unset | The chat model that runs the stop checks, as `"provider/modelId"`. The model ID may contain more slashes. |
+| `mcpUrl` | `http://127.0.0.1:3773/mcp` | The T3 MCP endpoint to use from a terminal. |
 | `steer` | `"on"` | The stop checks, as `"on"`, `"shadow"`, or `"off"`. |
 
-The package writes its files in the following places. When `XDG_CONFIG_HOME` or `XDG_STATE_HOME` is set, those folders replace `~/.config` and `~/.local/state`.
+The package writes its files in the places below. When `XDG_CONFIG_HOME` or `XDG_STATE_HOME` is set, the folder it names replaces `~/.config` or `~/.local/state`.
 
 ```text
 ~/.config/
@@ -273,19 +339,20 @@ The package writes its files in the following places. When `XDG_CONFIG_HOME` or 
 └── pi-t3-bridge/models.md     # model sheet, written by setup-pstack
 ~/.local/state/pi-t3/
 ├── accounts.json              # model families that are out of usage
-├── ledger.jsonl               # one line per delegated brief: cost and report
-└── steer.jsonl                # one line per stop check verdict, with no transcript text
+├── ledger.jsonl               # one line per delegated brief, with cost and report
+├── steer.jsonl                # one line per stop check verdict, with no transcript text
+└── pstack-overlay/            # pstack skills with the Pi changes applied
 ```
 
-Earlier releases kept the state and the model sheet under `t3-pstack`. The first start after an upgrade moves them to the new folders once.
+Earlier releases kept the state and the model sheet under `t3-pstack`, and the first start after an upgrade moves them to the new folders.
 
 ## Data handling
 
-The package has no server and sends no telemetry. The stop checks send parts of the session transcript to the classifier provider, which is Jev, the model you name in `classifierModel`, or your session model, and any file a skill asks the agent to read goes to your model provider. Scripts run on your machine, and the PR tools use your GitHub CLI login.
+The package has no server and sends no telemetry. The stop checks send parts of the session transcript to the classifier's provider, and any file a skill asks the agent to read goes to your model provider. Scripts run on your machine, and the PR tools use your GitHub CLI login.
 
 ## Development
 
-The repository uses npm, and the following commands check the code:
+The repository uses npm. The tests need Docker, because they also run the child tests in Linux containers.
 
 ```bash
 npm install
@@ -294,11 +361,11 @@ npm run typecheck
 npm run check      # Ultracite lint and format check
 ```
 
-The `pstack/` folder is a git subtree of t3-pstack. Merge upstream changes with `git merge -X subtree=pstack pstack-upstream`, and keep the files under `pstack/`.
+The `pstack/` folder is a git subtree of t3-pstack. To take upstream changes, run `git merge -X subtree=pstack pstack-upstream`, and put Pi changes in `overlay/` instead of editing `pstack/`.
 
 ## License
 
-The package is under the MIT license. The copyright holders include the following people and companies:
+The package uses the MIT license. The copyright holders include the following people and companies:
 
 - Lauren Tan, for the original pstack
 - Cursor, for the imported cursor-team-kit and thermos skills
