@@ -1,6 +1,6 @@
 {
   "name": "pi-t3-bridge",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Pi extension adapter for t3-pstack inside T3 Code.",
   "keywords": [
     "pi-extension",
@@ -39,7 +39,8 @@
     "LICENSE",
     "tstack.ts",
     "tstack",
-    "amplike.ts"
+    "amplike.ts",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "scripts": {

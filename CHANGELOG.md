@@ -1,5 +1,9 @@
 # Change log
 
+## 0.7.1, 4 November 2026
+
+Version 0.7.1 changes only the documentation. The README now covers all four extensions and the pi-amplike adapter, and the package now ships this change log.
+
 ## 0.7.0, 4 November 2026
 
 Version 0.7.0 builds and checks every schema with `@earendil-works/pi-schema` instead of `typebox`, because Pi 1.5.0 moved its own schemas and tool checks to pi-schema. The package now lists pi-schema as a dependency, and it no longer needs `typebox`.
