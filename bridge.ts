@@ -3,7 +3,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerAccounts } from "./src/bridge/accounts.ts";
 import { registerAsk } from "./src/bridge/ask.ts";
 import { registerBashTimeout } from "./src/bridge/bash-timeout.ts";
-import { registerBridgeTrim } from "./src/bridge/bridge-trim.ts";
 import { registerUnlessTaken } from "./src/bridge/claim.ts";
 import { registerConfig } from "./src/bridge/config.ts";
 import { registerPlanGate } from "./src/bridge/plan.ts";
@@ -30,7 +29,6 @@ const piT3Bridge = (pi: ExtensionAPI): void => {
   registerPlanGate(pi);
   registerAsk(pi);
   registerT3Mcp(pi);
-  registerBridgeTrim(pi);
   registerUsage(pi);
   registerSteer(pi);
 };

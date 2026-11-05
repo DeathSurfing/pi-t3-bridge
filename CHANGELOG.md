@@ -4,6 +4,8 @@
 
 This version removes the pi-amplike adapter (`amplike.ts`). The package no longer loads pi-amplike or changes its `/mode`, `/btw`, `/handoff`, and `subagent` for T3. Use T3's own `/btw`, `/side`, model picker, and `delegate_task` instead. If you set `{"source":"npm:pi-amplike","extensions":[]}` for the adapter, remove that entry from `~/.pi/agent/settings.json`.
 
+The bridge no longer rewrites the "- Subagents:" bullet in T3's "## T3 Code orchestration" section, so Pi sends T3's system prompt unchanged. The rewrite broke pi-cached-compaction, which rebuilds the last request and compares it byte for byte before it reuses the prompt cache. Every cached compaction in T3 failed with `request field "system" differs`. Pi now sees T3's original bullet, which names Claude's `Agent` and Codex's `spawn_agent`. Pi has neither tool.
+
 ## 0.7.2, 5 November 2026
 
 Version 0.7.2 stops pi-amplike's permission prompt in T3 threads. T3 has its own permission system, so the bridge no longer loads amplike's `permissions` extension inside T3, and Pi no longer asks "Permission required ... Allow?" before bash commands there. Outside T3, amplike's `/permissions` and its prompts work as before.
