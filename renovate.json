@@ -42,7 +42,7 @@
       "enabled": true,
       "followTag": "nightly",
       "prBodyNotes": [
-        "Before merging: run this extension in T3 {{{newVersion}}} and check the bridge it depends on, T3's MCP tools (`src/t3-mcp.ts`) and the prompt sections it trims (`src/bridge-trim.ts`). Then run `npm test`."
+        "Before merging: run this extension in T3 {{{newVersion}}} and check the bridge it depends on and T3's MCP tools (`src/t3-mcp.ts`). Then run `npm test`."
       ]
     },
     {
