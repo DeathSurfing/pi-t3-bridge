@@ -1,5 +1,9 @@
 # Change log
 
+## Unreleased
+
+This version removes the pi-amplike adapter (`amplike.ts`). The package no longer loads pi-amplike or changes its `/mode`, `/btw`, `/handoff`, and `subagent` for T3. Use T3's own `/btw`, `/side`, model picker, and `delegate_task` instead. If you set `{"source":"npm:pi-amplike","extensions":[]}` for the adapter, remove that entry from `~/.pi/agent/settings.json`.
+
 ## 0.7.2, 5 November 2026
 
 Version 0.7.2 stops pi-amplike's permission prompt in T3 threads. T3 has its own permission system, so the bridge no longer loads amplike's `permissions` extension inside T3, and Pi no longer asks "Permission required ... Allow?" before bash commands there. Outside T3, amplike's `/permissions` and its prompts work as before.

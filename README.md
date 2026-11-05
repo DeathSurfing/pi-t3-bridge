@@ -1,6 +1,6 @@
 # pi-t3-bridge
 
-pi-t3-bridge is a [Pi](https://pi.dev) package that lets Pi run as an agent inside [T3 Code](https://github.com/pingdotgg/t3code). It also ships the pstack and tstack skill sets, and it adapts [pi-amplike](https://github.com/pasky/pi-amplike) so that amplike's commands work in a T3 thread.
+pi-t3-bridge is a [Pi](https://pi.dev) package that lets Pi run as an agent inside [T3 Code](https://github.com/pingdotgg/t3code). It also ships the pstack and tstack skill sets.
 
 ```mermaid
 flowchart LR
@@ -10,15 +10,12 @@ flowchart LR
         Bridge[bridge.ts<br/>T3 tools, cards, limits]
         Pstack[pstack.ts<br/>pstack skills, model routing]
         Tstack[tstack.ts<br/>tstack skills]
-        Amplike[amplike.ts<br/>pi-amplike in T3]
     end
     Pi --> Bridge
     Pi --> Pstack
     Pi --> Tstack
-    Pi --> Amplike
     Bridge -->|MCP| T3
     Pstack -->|delegate_task| T3
-    Amplike -->|t3_thread_launch, delegate_task| T3
     T3 -->|child threads| Children[Claude, GPT, and other models]
 ```
 
@@ -46,18 +43,16 @@ Pi loads every extension in the package on the next start. To try the package fo
 
 ## What is in the package
 
-The package has four Pi extensions, and you can turn off any of them. None of the extensions needs another one to be loaded, although `pstack.ts` and `amplike.ts` reuse code from `src/bridge`.
+The package has three Pi extensions, and you can turn off any of them. None of the extensions needs another one to be loaded, although `pstack.ts` reuses code from `src/bridge`.
 
 ```text
 pi-t3-bridge/
 ├── bridge.ts       # connects Pi to T3 Code
 ├── pstack.ts       # serves pstack skills and picks models for subagents
 ├── tstack.ts       # serves tstack skills
-├── amplike.ts      # loads pi-amplike and adapts it for T3 threads
 ├── src/
 │   ├── bridge/     # code for bridge.ts
-│   ├── pstack/     # code for pstack.ts
-│   └── amplike/    # code for amplike.ts
+│   └── pstack/     # code for pstack.ts
 ├── pstack/         # upstream pstack skills, agents, and model defaults
 ├── overlay/        # the changes Pi needs on top of pstack/
 └── tstack/         # Theo Browne's tstack skills
@@ -254,61 +249,6 @@ sequenceDiagram
 ## The tstack extension
 
 The tstack extension serves Theo Browne's tstack skills from `tstack/skills`, which are babysit-pr, council, file-pr, full-send, full-stop, leaving-pr-comments, modernize, sol-loop, and takeover. It imports no other code from the package, so the skills stay available when you turn the other extensions off.
-
-## pi-amplike in T3 threads
-
-pi-amplike adds handoff, `/btw`, subagents, and prompt modes to Pi, but T3 can't show most of them. T3 shows Pi's `notify`, `select`, `confirm`, `input`, and `editor` calls, and it drops widgets, status lines, custom UI, and key presses. T3 also resumes a thread from the session file it first recorded, so a handoff that moves Pi to a new session file breaks the thread.
-
-To use the adapter, keep pi-amplike installed and turn off its own extensions in `~/.pi/agent/settings.json`. The adapter then loads amplike's extension files itself.
-
-```diff
- "packages": [
-   "npm:pi-t3-bridge",
--  "npm:pi-amplike"
-+  { "source": "npm:pi-amplike", "extensions": [] }
- ]
-```
-
-```text
-on(Pi start)
-  find pi-amplike with Pi's package manager
-  if amplike still loads its own extensions
-    do nothing, and in a T3 thread show a notice with the settings change
-  else if Pi runs inside a T3 thread
-    load amplike's extensions with the T3 changes below
-  else
-    load amplike's extensions unchanged
-```
-
-In a T3 thread, the adapter changes the following parts of amplike:
-
-| amplike | In a T3 thread |
-| --- | --- |
-| `subagent` tool | The adapter turns it off, so subagents run through T3's `delegate_task` and show up in T3. |
-| `/btw <prompt>` | Starts a `delegate_task` child that reads the parent thread's session with `session_query`. The child's answer wakes the parent thread. |
-| `handoff` tool and `/handoff <goal>` | Writes a summary with the session model, then starts a new T3 thread. The current thread keeps its own session file. |
-| `/mode` | Works as in the terminal, and sends each model and thinking change to T3, so T3's model picker shows the same model. |
-| Shortcuts | The adapter turns them off, because T3 sends Pi no key presses. |
-| `/permissions` and its bash prompts | The adapter doesn't load them, because T3 has its own permission system and amplike's prompt would ask a second time. |
-
-`session_query` and amplike's skills work unchanged. The diagram below shows the three commands that talk to T3.
-
-```mermaid
-sequenceDiagram
-    participant You
-    participant Pi as Pi (amplike.ts)
-    participant T3
-    You->>Pi: /handoff fix the failing tests
-    Pi->>Pi: summarize the chat with the session model
-    Pi->>T3: t3_thread_launch(goal, summary, parent session file)
-    T3-->>You: link to the new thread
-    You->>Pi: /btw which file holds the parser?
-    Pi->>T3: delegate_task(question, parent session file)
-    T3-->>Pi: child's answer wakes the thread
-    You->>Pi: /mode rush
-    Pi->>Pi: set model and thinking level
-    Pi->>T3: t3_thread_configure(modelSelection)
-```
 
 ## Settings
 

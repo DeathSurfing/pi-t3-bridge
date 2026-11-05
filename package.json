@@ -39,7 +39,6 @@
     "LICENSE",
     "tstack.ts",
     "tstack",
-    "amplike.ts",
     "CHANGELOG.md"
   ],
   "type": "module",
@@ -82,8 +81,7 @@
     "extensions": [
       "./bridge.ts",
       "./tstack.ts",
-      "./pstack.ts",
-      "./amplike.ts"
+      "./pstack.ts"
     ]
   },
   "upstreams": {
