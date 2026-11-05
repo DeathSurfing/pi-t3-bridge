@@ -289,8 +289,9 @@ In a T3 thread, the adapter changes the following parts of amplike:
 | `handoff` tool and `/handoff <goal>` | Writes a summary with the session model, then starts a new T3 thread. The current thread keeps its own session file. |
 | `/mode` | Works as in the terminal, and sends each model and thinking change to T3, so T3's model picker shows the same model. |
 | Shortcuts | The adapter turns them off, because T3 sends Pi no key presses. |
+| `/permissions` and its bash prompts | The adapter doesn't load them, because T3 has its own permission system and amplike's prompt would ask a second time. |
 
-`session_query`, `/permissions`, and amplike's skills work unchanged. The diagram below shows the three commands that talk to T3.
+`session_query` and amplike's skills work unchanged. The diagram below shows the three commands that talk to T3.
 
 ```mermaid
 sequenceDiagram
