@@ -1,5 +1,9 @@
 # Change log
 
+## 0.7.2, 5 November 2026
+
+Version 0.7.2 stops pi-amplike's permission prompt in T3 threads. T3 has its own permission system, so the bridge no longer loads amplike's `permissions` extension inside T3, and Pi no longer asks "Permission required ... Allow?" before bash commands there. Outside T3, amplike's `/permissions` and its prompts work as before.
+
 ## 0.7.1, 4 November 2026
 
 Version 0.7.1 changes only the documentation. The README now covers all four extensions and the pi-amplike adapter, and the package now ships this change log.
