@@ -106,6 +106,10 @@
       {
         "find": "GPT models (Astra, Sol, Luna) drift on long or open work and leave files behind. A GPT brief must be size S, 30 min or less, 500 MB or less, with repo-relative paths, and the call must set `isolation: \"worktree\"` and keep `mode: \"async\"`.",
         "replace": "For GPT work, prefer size S, a worktree for writing tasks, and async mode. Follow the user's instructions when they differ."
+      },
+      {
+        "find": "- Every shell command runs in a macOS sandbox that can write only to the workdir, its git directory, the tool caches and the system temp folder.",
+        "replace": "- Every shell command runs in a sandbox, which is `sandbox-exec` on macOS and `bwrap` on Linux. The sandbox can write only to the workdir, its git directory, the tool caches, the pnpm store and the system temp folder, and it keeps the git hooks and git config read-only.\n- A delegated child needs all seven sections of this template. If its brief misses one, the extension blocks every tool, and the parent has to send a complete brief.\n- A bullet under \"Files you may write\" may list several paths. Every word with a slash or a glob counts as a path, e.g. `- packages/a/** and packages/b/c.ts`.\n- The disk limit leaves out `node_modules`, because pnpm fills it from the store. Build output still counts.\n- The child skips install scripts, so `pnpm install` and `npm install` run no `prepare` or `postinstall`. Don't ask for `prepare` to pass. If a postinstall generates files, e.g. `next typegen`, put the build or typecheck that generates them in the acceptance command.\n- npm also skips the `pre` and `post` scripts of `npm run` and `npm test` in the child, so name them in the acceptance command, e.g. `npm run prebuild && npm test`."
       }
     ],
     "skills/setup-pstack/SKILL.md": [

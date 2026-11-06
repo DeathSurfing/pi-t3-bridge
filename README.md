@@ -1,6 +1,6 @@
 # pi-t3-bridge
 
-pi-t3-bridge is a [Pi](https://pi.dev) package that lets Pi run as an agent inside [T3 Code](https://github.com/pingdotgg/t3code). It also ships the pstack and tstack skill sets.
+pi-t3-bridge is a [Pi](https://pi.dev) package that lets Pi run as an agent inside [T3 Code](https://github.com/pingdotgg/t3code). It also ships two skill sets, pstack and tstack, so a Pi thread in T3 can plan work, hand parts of it to other models, and check what comes back.
 
 ```mermaid
 flowchart LR
@@ -26,14 +26,9 @@ You need the following programs:
 - Node.js 22.19.0 or later
 - Pi 1.4.0 or later
 - T3 Code, if you want to run Pi threads inside T3 or call T3 tools from Pi
+- On Linux, the `bubblewrap` package, for the sandbox that delegated children run in
 
-A delegated child runs its shell commands in a sandbox, which is `sandbox-exec` on macOS and `bwrap` (bubblewrap) on Linux and WSL2. On Linux you need the `bubblewrap` package and unprivileged user namespaces. The Ubuntu `bubblewrap` package ships an AppArmor profile that lets `bwrap` run (checked on 26.04). If AppArmor still blocks `bwrap`, run `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
-
-Inside the sandbox a child can write only to its workdir, its git directory, the tool caches, the pnpm store, and the system temp folder. The git hooks and git config stay read-only, because the parent runs them later outside the sandbox. Each child gets its own `XDG_RUNTIME_DIR` in the temp folder, where pnpm takes its store lock. The child also gets `pnpm_config_store_dir` set to the store that `pnpm store path` names for the workdir outside the sandbox, so it shares the parent's store. Under `bwrap`, pnpm copies packages from the store, because Linux refuses hardlinks across the sandbox's mounts. Children skip install scripts (`npm_config_ignore_scripts` and `pnpm_config_ignore_scripts` are `true`), so a root `prepare` such as `lefthook install` does not run. With this setting npm also skips the pre and post scripts of `npm run` and `npm test`, while pnpm still runs them. Steps that only a postinstall runs must run through the build or typecheck the brief names.
-
-The child also gets `TMPDIR` set. On Linux the child cannot see or signal processes outside its own commands, so a stray `pkill` cannot reach a daemon on the host, and anything a command starts in the background dies when that command ends. Chrome, Electron and headless shells need `--no-sandbox` inside the sandbox, because their own namespace sandbox cannot nest under bwrap; the sandbox already confines them. A `pi` run inside the sandbox needs `PI_CODING_AGENT_DIR` pointing at a writable temp copy of `~/.pi/agent`, because the real one is read-only. The disk limit in a brief ignores `node_modules`, which pnpm fills from the store.
-
-Native Windows and WSL1 have no sandbox. Where no sandbox can run, the bridge blocks a child's shell commands, unless you set `childSandbox` to `"off"` in the settings file.
+The Ubuntu `bubblewrap` package ships an AppArmor profile that lets `bwrap` run, which we checked on Ubuntu 26.04. If AppArmor still stops `bwrap`, run `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 
 ## Install
 
@@ -47,7 +42,7 @@ Pi loads every extension in the package on the next start. To try the package fo
 
 ## What is in the package
 
-The package has three Pi extensions, and you can turn off any of them. None of the extensions needs another one to be loaded, although `pstack.ts` reuses code from `src/bridge`.
+The package has three Pi extensions, and you can turn off any of them. No extension needs another one to be loaded, although `pstack.ts` reuses code from `src/bridge`.
 
 ```text
 pi-t3-bridge/
@@ -56,7 +51,7 @@ pi-t3-bridge/
 ├── tstack.ts       # serves tstack skills
 ├── src/
 │   ├── bridge/     # code for bridge.ts
-│   └── pstack/     # code for pstack.ts
+│   └── pstack/     # code for pstack.ts, including the child sandbox
 ├── pstack/         # upstream pstack skills, agents, and model defaults
 ├── overlay/        # the changes Pi needs on top of pstack/
 └── tstack/         # Theo Browne's tstack skills
@@ -72,7 +67,7 @@ To load only some extensions, list the package in `~/.pi/agent/settings.json` in
 
 ## The bridge extension
 
-The bridge gives Pi the tools and commands that T3 Code expects, and it shows them as cards in the T3 chat. When another installed package already registers a tool with the same name, e.g. `ask` from pi-ask, the bridge keeps the other package's tool and tells you once that its own copy is off.
+The bridge gives Pi the tools and commands that T3 Code expects, and it shows them as cards in the T3 chat. If another installed package already has a tool with the same name, e.g. `ask` from pi-ask, the bridge keeps the other package's tool and tells you once that its own copy is off.
 
 | Name | Kind | What it does |
 | --- | --- | --- |
@@ -87,7 +82,7 @@ The bridge gives Pi the tools and commands that T3 Code expects, and it shows th
 
 ### Plan mode
 
-When T3 is in Plan mode, or when a plan card waits for your answer, the bridge blocks every tool that can change files. Read-only tools still run, so the agent can read files while you decide.
+When T3 is in Plan mode, or when a plan card waits for your answer, the bridge blocks every tool that can change files. Read-only tools still run, so the agent can keep reading files while you decide.
 
 ```mermaid
 stateDiagram-v2
@@ -104,7 +99,7 @@ stateDiagram-v2
 
 ### Calls to T3 from a terminal
 
-When you run Pi in a terminal instead of a T3 thread, the bridge connects Pi to T3's MCP server, which is the endpoint where T3 Code serves its tools. You can then start threads, send messages to them, and wait on them from the terminal, and the status bar shows whether the connection works.
+When you run Pi in a terminal instead of a T3 thread, the bridge connects Pi to T3's MCP server, which is the address where T3 Code serves its tools. You can then start threads, send messages to them, and wait on them from the terminal, and the status bar shows whether the connection works.
 
 ```text
 on(session start)
@@ -121,7 +116,7 @@ on(session start)
 
 ### Usage limits and resume
 
-The bridge records which model families are out of usage, and every Pi session on the machine reads the same record. When a child fails with a usage limit, the bridge marks the family as out until its reset time, so pstack sends new work to another family.
+The bridge keeps one record of which model families are out of usage, and every Pi session on the machine reads it. When a child fails with a usage limit, the bridge marks the family as out until its reset time, so pstack sends new work to another family.
 
 ```mermaid
 sequenceDiagram
@@ -137,15 +132,15 @@ sequenceDiagram
     Parent->>T3: delegate_task (next family)
 ```
 
-The main thread's own account can also run out, and then the agent can't call any tool. When the main thread's account runs out, the bridge asks T3 to post a resume message into the thread just after the reset time.
+The main thread's own account can also run out, and then the agent can't call any tool. In that case the bridge asks T3 to post a resume message into the thread just after the reset time.
 
 ### Shell time limit
 
-The bridge stops any shell command after 300 seconds, in the main thread and in children, so a test suite that hangs stops the chat for 5 minutes at most. A command can ask for a shorter timeout but not a longer one, and you can change the limit with `bashTimeoutSeconds` in the settings file.
+The bridge stops any shell command after 300 seconds, in the main thread and in children, so a test suite that hangs holds up the chat for at most 5 minutes. A command can ask for a shorter timeout but not a longer one. You can change the limit with `bashTimeoutSeconds` in the settings file.
 
 ### Stop checks
 
-When a run is about to stop, the bridge asks a classifier model how the run ended, and it gives the agent one more turn when the agent gave up partway. The checks come from [pi-mast-steer](https://github.com/dbreunig/pi-mast-steer).
+When a run is about to stop, the bridge asks a classifier model how the run ended, and it gives the agent one more turn if the agent gave up partway. The checks come from [pi-mast-steer](https://github.com/dbreunig/pi-mast-steer).
 
 ```text
 on(run about to stop)
@@ -164,14 +159,14 @@ every 3 turns
     add a note that names it
 ```
 
-The known failures come from the MAST list of agent failures:
+The known failures come from MAST, a published list of the ways agent runs fail:
 
-- Stuck in a loop
-- Doesn't know when to stop
-- Wandered off
-- Broke the brief, or says one thing and does another
+- The agent repeats a step that already finished.
+- The agent doesn't know when to stop.
+- The agent drifts away from the task.
+- The agent breaks the brief, or says one thing and does another.
 
-The bridge picks the classifier in the order below, and it doesn't fall back to the next one when the chosen one fails.
+The bridge picks the classifier in the order below. It doesn't fall back to the next choice when the chosen classifier fails.
 
 ```text
 pick classifier
@@ -183,7 +178,7 @@ pick classifier
     use the session model
 ```
 
-A chat model answers the same questions through one tool call. Its probabilities are its own guesses and not calibrated like Jev's, and the thresholds were fitted on Jev, so a chat model may add notes more or less often. A chat model also costs tokens on your account, with one call per stop check and one every 3 turns. Set `steer` to `"shadow"` to log the verdicts without changing the session, or to `"off"` to turn the checks off.
+A chat model answers the same questions through one tool call. Its probabilities are its own guesses, and the thresholds were fitted on Jev, so a chat model may add notes more often or less often than Jev. A chat model also costs tokens on your account, with one call for each stop check and one call every 3 turns. Set `steer` to `"shadow"` to log the verdicts without changing the session, or set it to `"off"` to turn the checks off.
 
 ## The pstack extension
 
@@ -198,11 +193,11 @@ on(Pi start)
   serve the skills from the copy
 ```
 
-When a change in `overlay/` no longer matches a new upstream text, the test run fails and names the file.
+If a change in `overlay/` no longer matches the text in a new upstream version, the test run fails and names the file.
 
 ### Model routing
 
-The `pstack_model` tool picks the model for each subagent. The agent passes a role, a job type, and a size, and the tool returns a target that the agent passes to T3's `delegate_task`.
+The `pstack_model` tool picks the model for each subagent. The agent passes a role, a job type, and a size, and the tool returns a target, which the agent passes to T3's `delegate_task`.
 
 ```text
 pstack_model(role, job, size)
@@ -218,11 +213,11 @@ pstack_model(role, job, size)
   return the target for delegate_task
 ```
 
-The routing table lives in `pstack/models.json`. Size S is a job of 30 minutes or less that touches 5 files or fewer, and size M is a job of 90 minutes or less that touches 15 files or fewer.
+The routing table lives in `pstack/models.json`. A size S job takes 30 minutes or less and touches 5 files or fewer, and a size M job takes 90 minutes or less and touches 15 files or fewer.
 
 | Job | Size S | Size M |
 | --- | --- | --- |
-| `mechanical`, e.g. a lint fix or rename | Haiku 5.5, low | Sonnet 5.5, medium |
+| `mechanical`, e.g. a lint fix or a rename | Haiku 5.5, low | Sonnet 5.5, medium |
 | `check`, which runs given commands | GPT 6 Luna, low | Haiku 5.5, medium |
 | `research`, which writes one notes file | Muse Spark 1.3, medium | Muse Wonder 1.0, medium |
 | `implement`, one unit with named tests | GPT 6.1 Sol, medium | Sonnet 5.5, high |
@@ -234,7 +229,7 @@ To choose your own models, run the `setup-pstack` skill, which writes a model sh
 
 ### Limits for delegated children
 
-When the first message of a session is a complete pstack brief, the extension treats the session as a delegated child and holds it to the limits in the brief. The child can't lift the limits through anything it writes. A T3-delegated child whose brief has a `# Task:` heading but misses a section or a header field gets every tool blocked, with a list of what is missing, so it never runs without the sandbox.
+When the first message of a session is a complete pstack brief, the extension treats the session as a delegated child and holds it to the limits in the brief. The child can't lift the limits through anything it writes.
 
 ```mermaid
 sequenceDiagram
@@ -243,7 +238,7 @@ sequenceDiagram
     participant Child as Child thread (pi-t3-bridge)
     Parent->>T3: delegate_task with a brief
     T3->>Child: start with the brief
-    Note over Child: shell runs in a sandbox limited to the workdir<br/>write and edit limited to the listed files<br/>time and disk limits enforced
+    Note over Child: shell runs in the sandbox<br/>write and edit limited to the listed files<br/>time and disk limits enforced
     Child->>Child: write report from commands it ran itself
     Child-->>T3: final message
     Child->>Child: append report to the ledger
@@ -252,13 +247,67 @@ sequenceDiagram
     Note over Parent: the extension adds the report from the ledger
 ```
 
+The extension decides how to treat a session from its first message, in the order below.
+
+```text
+on(tool call)
+  if the first message is not a "# Task:" brief
+    run as your own session, with no limits
+  else if the brief is complete
+    run as a child, inside the sandbox and the limits
+  else if T3 started the session as a delegated task
+    block every tool, and list what the brief is missing
+  else
+    run as your own session, with no limits
+```
+
+A brief is complete when it has a header with the job, size, time limit, and disk limit, and all seven sections of the template in `pstack/skills/poteto-mode/brief.md`. A bullet under "Files you may write" may list several paths, and every word with a slash or a glob counts as a path. The disk limit leaves out `node_modules`, because pnpm fills it from the store, but build output still counts.
+
+### The child sandbox
+
+A delegated child runs every shell command in a sandbox, which is `sandbox-exec` on macOS and `bwrap` on Linux and WSL2. The sandbox lets the child write to its own work and to the caches that package managers need, and it keeps everything the parent runs later read-only.
+
+```text
+writable inside the sandbox
+├── <workdir>/                       # the child's checkout
+├── <git dir>/                       # objects and refs, so git commit works
+│   ├── hooks/                       # read-only, the parent runs them later
+│   └── config                       # read-only
+├── ~/.cache, ~/.npm, ~/.local/share/uv, ~/.local/share/mise
+├── ~/Library/Caches                 # macOS only
+├── <pnpm store>/                    # the store `pnpm store path` names
+├── <system temp folder>/            # also $TMPDIR and $XDG_RUNTIME_DIR
+└── /dev
+everything else is read-only
+```
+
+The bridge sets these variables for each child command:
+
+| Variable | Value | Why |
+| --- | --- | --- |
+| `XDG_RUNTIME_DIR` | a new folder in the temp folder, one per child | pnpm 12 takes its store lock here, and the real one is read-only. |
+| `TMPDIR` | the system temp folder | Commands such as `$TMPDIR/x` resolve to a writable folder. |
+| `pnpm_config_store_dir` | the store `pnpm store path` names for the workdir | Under `bwrap`, pnpm can't hardlink across the sandbox's mounts, so without it pnpm builds a second store in the workdir. With it, pnpm copies from the shared store. |
+| `npm_config_ignore_scripts`, `pnpm_config_ignore_scripts` | `true` | A root `prepare` such as `lefthook install` would fail on the read-only hooks, so install scripts don't run. |
+
+Skipping install scripts has two side effects. First, a step that only a postinstall runs, e.g. `next typegen`, has to run through the build or typecheck that the brief names. Second, npm also skips the `pre` and `post` scripts of `npm run` and `npm test`, while pnpm still runs them.
+
+On Linux the child also runs in its own process namespace, so it can see and signal only its own commands. A stray `pkill` from a child can't reach a daemon on the host, and anything a command starts in the background ends when that command ends.
+
+Some programs need a change to run inside the sandbox:
+
+- Chrome, Electron, and headless shells need `--no-sandbox`, because their own sandbox can't start inside `bwrap`. The child sandbox still confines them.
+- A `pi` run inside a child needs `PI_CODING_AGENT_DIR` set to a writable temp copy of `~/.pi/agent`, because the real folder is read-only.
+
+Native Windows and WSL1 have no sandbox. Where no sandbox can run, the bridge blocks a child's shell commands, unless you set `childSandbox` to `"off"` in the settings file.
+
 ## The tstack extension
 
 The tstack extension serves Theo Browne's tstack skills from `tstack/skills`, which are babysit-pr, council, file-pr, full-send, full-stop, leaving-pr-comments, modernize, sol-loop, and takeover. It imports no other code from the package, so the skills stay available when you turn the other extensions off.
 
 ## Settings
 
-The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Every key is optional. The bridge reads the file again on each prompt, so an edit applies on the next prompt. When a value is invalid, only the invalid key falls back to its default, and the bridge tells you once.
+The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Every key is optional. The bridge reads the file again on each prompt, so an edit applies on the next prompt. If a value is invalid, only that key falls back to its default, and the bridge tells you once.
 
 ```json
 {
@@ -275,10 +324,10 @@ The bridge reads one JSON file per machine, at `~/.config/pi-t3/config.json`. Ev
 | `bashTimeoutSeconds` | `300` | The longest a shell command can run, in seconds. |
 | `childSandbox` | `"on"` | With `"on"`, a child's `bash` is blocked when no sandbox can run. With `"off"`, commands run with no sandbox on every platform, and the child's report says `SANDBOX: off`. |
 | `classifierModel` | unset | The chat model that runs the stop checks, as `"provider/modelId"`. The model ID may contain more slashes. |
-| `mcpUrl` | `http://127.0.0.1:3773/mcp` | The T3 MCP endpoint to use from a terminal. |
+| `mcpUrl` | `http://127.0.0.1:3773/mcp` | The T3 MCP address to use from a terminal. |
 | `steer` | `"on"` | The stop checks, as `"on"`, `"shadow"`, or `"off"`. |
 
-The package writes its files in the places below. When `XDG_CONFIG_HOME` or `XDG_STATE_HOME` is set, the folder it names replaces `~/.config` or `~/.local/state`.
+The package writes its files in the places below. If `XDG_CONFIG_HOME` or `XDG_STATE_HOME` is set, the folder it names replaces `~/.config` or `~/.local/state`.
 
 ```text
 ~/.config/
@@ -299,7 +348,7 @@ The package has no server and sends no telemetry. The stop checks send parts of 
 
 ## Development
 
-The repository uses npm. The tests need Docker, because they also run the child tests in Linux containers.
+The repository uses npm. The tests need Docker, because some of them run the child tests in Linux containers.
 
 ```bash
 npm install
@@ -308,7 +357,7 @@ npm run typecheck
 npm run check      # Ultracite lint and format check
 ```
 
-The `pstack/` folder is a git subtree of t3-pstack. To take upstream changes, run `git merge -X subtree=pstack pstack-upstream`, and put Pi changes in `overlay/` instead of editing `pstack/`.
+The `pstack/` folder is a git subtree of t3-pstack. To take upstream changes, run `git merge -X subtree=pstack pstack-upstream`. Put Pi changes in `overlay/`, and leave `pstack/` as upstream wrote it.
 
 ## License
 
