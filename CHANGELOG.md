@@ -1,5 +1,11 @@
 # Change log
 
+## 0.8.1, 6 November 2026
+
+Version 0.8.1 lets a delegated child run `pnpm install` and `git commit` in a pnpm and lefthook repo, under `bwrap` on Linux and `sandbox-exec` on macOS. Each child gets its own `XDG_RUNTIME_DIR` in the temp folder, where pnpm 12 takes its store lock. The sandbox can now write to the store that `pnpm store path` names for the workdir, and the child uses that store, so it shares the parent's store and does not build a second one in the workdir.
+
+Children now skip install scripts, so a root `prepare` such as `lefthook install` no longer fails on the read-only git hooks. With this setting npm also skips the pre and post scripts of `npm run`, while pnpm still runs them. A brief that needs a postinstall step, such as `next typegen`, should name the build or typecheck that runs it.
+
 ## 0.8.0, 5 November 2026
 
 Version 0.8.0 removes the pi-amplike adapter (`amplike.ts`). The package no longer loads pi-amplike or changes its `/mode`, `/btw`, `/handoff`, and `subagent` for T3. Use T3's own `/btw`, `/side`, model picker, and `delegate_task` instead. If you set `{"source":"npm:pi-amplike","extensions":[]}` for the adapter, remove that entry from `~/.pi/agent/settings.json`.
