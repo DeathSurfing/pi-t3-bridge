@@ -64,9 +64,26 @@ const listItems = (section: string | undefined): string[] =>
         return [];
       }
 
-      const [first = ""] = item.replaceAll("`", "").trim().split(/\s+/u);
+      // A bullet may list several paths. Every token with a slash or a glob
+      // counts, so "a/** and b/c.ts" writes both. A bullet with no such
+      // token keeps only its first word, which stays the old behavior for
+      // plain file names.
+      const tokens = item
+        .replaceAll("`", "")
+        .trim()
+        .split(/[\s,]+/u)
+        .map((token) =>
+          token
+            .replace(/^[([{\u201C']+/u, "")
+            .replace(/[.,;)\]}\u201D']+$/u, "")
+        )
+        .filter((token) => token !== "");
 
-      return [first.replace(/[:,]$/u, "")];
+      const paths = tokens.filter(
+        (token) => token.includes("/") || token.includes("*")
+      );
+
+      return paths.length > 0 ? paths : [tokens[0] ?? ""];
     })
     .filter((item) => item !== "");
 
