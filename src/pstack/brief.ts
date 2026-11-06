@@ -253,10 +253,9 @@ const dispatchable = (brief: Brief): boolean =>
   brief.diskMb !== undefined &&
   SECTIONS.every((section) => brief.sections.has(section));
 
-// The brief that started this session, when it is a delegated child.
-export const sessionBrief = (
+const firstMessage = (
   ctx: ExtensionContext
-): { readonly brief: Brief; readonly startedAt: number } | undefined => {
+): { readonly at: number; readonly text: string } | undefined => {
   const first = ctx.sessionManager
     .getBranch()
     .find((entry) => entry.type === "message" && entry.message.role === "user");
@@ -267,13 +266,38 @@ export const sessionBrief = (
 
   const { content } = first.message;
 
-  const text = isString(content)
-    ? content
-    : content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
+  return {
+    at: Date.parse(first.timestamp),
+    text: isString(content)
+      ? content
+      : content
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join("\n"),
+  };
+};
 
-  const brief = parseBrief(text);
+// The brief that started this session, when it is a delegated child.
+export const sessionBrief = (
+  ctx: ExtensionContext
+): { readonly brief: Brief; readonly startedAt: number } | undefined => {
+  const first = firstMessage(ctx);
+  const brief = first === undefined ? undefined : parseBrief(first.text);
 
-  return brief === undefined || !dispatchable(brief)
+  return first === undefined || brief === undefined || !dispatchable(brief)
     ? undefined
-    : { brief, startedAt: Date.parse(first.timestamp) };
+    : { brief, startedAt: first.at };
+};
+
+// What is wrong with a brief that has a `# Task:` heading but is not complete
+// enough to hold a child to. Undefined when there is no such brief.
+export const incompleteBrief = (
+  ctx: ExtensionContext,
+  rules: BriefRules
+): string[] | undefined => {
+  const first = firstMessage(ctx);
+  const brief = first === undefined ? undefined : parseBrief(first.text);
+
+  return first === undefined || brief === undefined || dispatchable(brief)
+    ? undefined
+    : briefProblems(first.text, rules);
 };

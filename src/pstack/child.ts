@@ -22,9 +22,9 @@ import {
 
 import { bashTimeoutSeconds } from "../bridge/bash-timeout.ts";
 import { appendLedger } from "../bridge/state.ts";
-import { ownThreadId } from "../bridge/thread.ts";
-import { sessionBrief } from "./brief.ts";
-import type { Brief } from "./brief.ts";
+import { isDelegatedChild, ownThreadId } from "../bridge/thread.ts";
+import { incompleteBrief, sessionBrief } from "./brief.ts";
+import type { Brief, BriefRules } from "./brief.ts";
 import { policyPath } from "./resources.ts";
 import {
   chooseSandbox,
@@ -122,10 +122,22 @@ const isExecFailure = compile(
   )
 ).check;
 
+const isLimits = compile(obj({ files: num(), minutes: num() })).check;
+
 const isPolicy = compile(
   obj(
     {
-      briefs: opt(obj({ redBeforeGreen: opt(arr(str())) }, { open: true })),
+      briefs: opt(
+        obj(
+          {
+            noWrites: opt(arr(str())),
+            redBeforeGreen: opt(arr(str())),
+            sizes: opt(obj({}, { open: true })),
+          },
+          { open: true }
+        )
+      ),
+      jobs: opt(obj({}, { open: true })),
     },
     { open: true }
   )
@@ -139,10 +151,27 @@ const isPathInput = compile(obj({ path: str() }, { open: true })).check;
 
 const isNumber = compile(num()).check;
 
-const readRedBeforeGreen = (): readonly string[] => {
+const readPolicy = () => {
   const policy: unknown = JSON.parse(readFileSync(policyPath(), "utf-8"));
 
-  return isPolicy(policy) ? (policy.briefs?.redBeforeGreen ?? []) : [];
+  return isPolicy(policy) ? policy : {};
+};
+
+const readRedBeforeGreen = (): readonly string[] =>
+  readPolicy().briefs?.redBeforeGreen ?? [];
+
+const readBriefRules = (): BriefRules => {
+  const { briefs, jobs } = readPolicy();
+
+  return {
+    jobs: Object.keys(jobs ?? {}),
+    noWrites: briefs?.noWrites ?? [],
+    sizes: Object.fromEntries(
+      Object.entries(briefs?.sizes ?? {}).flatMap(([size, limits]) =>
+        isLimits(limits) ? [[size, limits] as const] : []
+      )
+    ),
+  };
 };
 
 const changedFiles = async (cwd: string): Promise<string[]> => {
@@ -227,6 +256,7 @@ interface ChildState {
   diskCheck: Promise<void>;
   diskOver: boolean;
   diskQueued: boolean;
+  delegated: boolean | undefined;
   gitDir: string | undefined;
   greenAtStart: boolean;
   ready: boolean;
@@ -237,6 +267,7 @@ export const registerChild = (pi: ExtensionAPI): void => {
   const state: ChildState = {
     baselineKb: undefined,
     before: undefined,
+    delegated: undefined,
     diskCheck: Promise.resolve(),
     diskOver: false,
     diskQueued: false,
@@ -331,7 +362,22 @@ export const registerChild = (pi: ExtensionAPI): void => {
     const started = sessionBrief(ctx);
 
     if (started === undefined) {
-      return;
+      // A delegated child whose brief is incomplete would otherwise run with
+      // no sandbox and no limits, as if it were the user's own session.
+      const problems = incompleteBrief(ctx, readBriefRules());
+
+      if (problems === undefined) {
+        return;
+      }
+
+      state.delegated ??= await isDelegatedChild();
+
+      return state.delegated
+        ? {
+            block: true,
+            reason: `This delegated task's brief is incomplete, so it can't run in the sandbox and every tool is blocked. Use no more tools. Report STATUS: BLOCKED (incomplete brief) with these problems, so the parent can resend a complete brief:\n- ${problems.join("\n- ")}`,
+          }
+        : undefined;
     }
 
     const { brief, startedAt } = started;
