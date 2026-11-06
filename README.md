@@ -150,7 +150,9 @@ on(run about to stop)
   ask the classifier how the run ended
   if the classifier is down or takes more than 5 seconds
     let the run stop
-  if the agent gave up partway and fewer than 2 notes were sent for the current prompt
+  if the agent gave up partway
+    if a stop note was already sent for the current prompt
+      log the check as capped in steer.jsonl and let the run stop
     add a note
     continue for one more turn
 

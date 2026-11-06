@@ -37,8 +37,13 @@ import { isDelegatedChild } from "./thread.ts";
 // github.com/dbreunig/pi-mast-steer), which only adds notes and never
 // continues a stopped run.
 
-// Per user prompt, so a model that keeps quitting cannot loop.
-const MAX_NUDGES = 2;
+// Per user prompt, so a model that keeps quitting cannot loop. A model that
+// stops again after a stop nudge has already reconsidered, and every second
+// stop nudge in the user's sessions was wrong. A reply cut off at the output
+// limit can need more than one continuation.
+const NUDGE_LIMITS = { length: 2, stop: 1 } as const;
+
+type NudgeGroup = keyof typeof NUDGE_LIMITS;
 
 const UNAWARE_OF_TERMINATION = "1.5";
 
@@ -79,17 +84,28 @@ const nudge = (
   ],
 });
 
-// Counted from the branch, so the cap holds across a reload. A nudge is a
+const noteDetails = compile(obj({ kind: opt(str()) }, { open: true }));
+
+const groupOf = (entry: SessionEntry): NudgeGroup | undefined => {
+  if (entry.type !== "custom_message" || entry.customType !== STEER_NOTE) {
+    return undefined;
+  }
+
+  return noteDetails.check(entry.details) && entry.details.kind === "length"
+    ? "length"
+    : "stop";
+};
+
+// Counted from the branch, so the limit holds across a reload. A nudge is a
 // custom message, not a user message, so it does not reset the count.
-const nudgesThisPrompt = (ctx: ExtensionContext): number => {
+const atLimit = (ctx: ExtensionContext, group: NudgeGroup): boolean => {
   const branch = ctx.sessionManager.getBranch();
 
-  return branch
-    .slice(branch.findLastIndex(isUser) + 1)
-    .filter(
-      (entry) =>
-        entry.type === "custom_message" && entry.customType === STEER_NOTE
-    ).length;
+  return (
+    branch
+      .slice(branch.findLastIndex(isUser) + 1)
+      .filter((entry) => groupOf(entry) === group).length >= NUDGE_LIMITS[group]
+  );
 };
 
 // The newest note this feature added in the prompt, of either kind. MAST 1.5
@@ -441,23 +457,21 @@ export const registerSteer = (pi: ExtensionAPI): void => {
       return;
     }
 
-    if (nudgesThisPrompt(ctx) >= MAX_NUDGES) {
-      tell(ctx, "steer: limit reached", "info");
-
-      return;
-    }
-
     const base = {
       mode,
       model: last.model,
       session: ctx.sessionManager.getSessionId(),
     };
 
-    // Shadow mode only judges and logs, so it never continues a run.
+    // Shadow mode only judges and logs, so it never continues a run. A nudge
+    // the limit holds back is logged as capped and not shown.
     if (last.stopReason === "length") {
-      appendSteerLog({ ...base, kind: "length", nudged: mode === "on" });
+      const capped = mode === "on" && atLimit(ctx, "length");
+      const nudged = mode === "on" && !capped;
 
-      return mode === "on" ? nudge(event, "length") : undefined;
+      appendSteerLog({ ...base, capped, kind: "length", nudged });
+
+      return nudged ? nudge(event, "length") : undefined;
     }
 
     const input =
@@ -488,9 +502,13 @@ export const registerSteer = (pi: ExtensionAPI): void => {
     }
 
     const chosen = chooseNudge(ctx, verdict);
-    const nudged = mode === "on" && chosen !== undefined;
 
-    appendSteerLog({ ...base, kind: "stop", nudged, verdict });
+    const capped =
+      mode === "on" && chosen !== undefined && atLimit(ctx, "stop");
+
+    const nudged = mode === "on" && chosen !== undefined && !capped;
+
+    appendSteerLog({ ...base, capped, kind: "stop", nudged, verdict });
 
     return nudged ? nudge(event, chosen.kind, chosen.probability) : undefined;
   });
