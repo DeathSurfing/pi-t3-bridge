@@ -61,6 +61,9 @@ ISSUES or BLOCKED: one line each with file:line and the command that shows it
 The child's own pstack extension reads this brief from its first message and enforces it, whatever the model does:
 
 - Every shell command runs in a sandbox (`sandbox-exec` on macOS, `bwrap` on Linux) that can write only to the workdir, its git directory, the tool caches, the pnpm store and the system temp folder. Git hooks and git config stay read-only.
+- All seven sections of this template are required. A delegated child whose brief misses one gets every tool blocked, so the parent must resend a complete brief.
+- In "Files you may write", a bullet may list several paths. Every token with a slash or a glob counts, as in `- packages/a/** and packages/b/c.ts`.
+- The disk limit ignores `node_modules`, which pnpm fills from the store, but build output still counts.
 - Install scripts are skipped, so `pnpm install` or `npm install` runs no `prepare` or `postinstall`. Don't ask for `prepare` to pass. If a postinstall generates something, such as `next typegen`, name the build or typecheck that runs it in the acceptance command. npm also skips `pre` and `post` scripts of `npm run` and `npm test`, so name those too, as in `npm run prebuild && npm test`.
 - `write` and `edit` only touch the listed files and `.scratch/`.
 - Shell timeouts stop at the time limit. After it, or past the disk limit, every tool is refused and the child can only report.

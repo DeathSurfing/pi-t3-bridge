@@ -158,6 +158,11 @@ const bwrapArgs = (
   "--dev-bind",
   "/dev",
   "/dev",
+  // A child cannot see or signal processes outside its own commands, so a
+  // stray pkill from a child cannot reach a daemon on the host. What a
+  // command starts in the background dies when that command ends.
+  "--die-with-parent",
+  "--unshare-pid",
   "--proc",
   "/proc",
   ...existing(writableRoots(workdir, gitDir, store)).flatMap((root) =>
@@ -269,7 +274,7 @@ export const chooseSandbox = async (
 // and later read pnpm_config_*. npm also skips pre and post scripts of
 // `npm run` then.
 const exportEnv = (env: ChildEnv, command: string): string =>
-  `export XDG_RUNTIME_DIR=${quote(env.runtimeDir)}${env.pnpmStore === undefined ? "" : ` pnpm_config_store_dir=${quote(env.pnpmStore)}`} npm_config_ignore_scripts=true pnpm_config_ignore_scripts=true; ${command}`;
+  `export XDG_RUNTIME_DIR=${quote(env.runtimeDir)} TMPDIR=${quote(tmpdir())}${env.pnpmStore === undefined ? "" : ` pnpm_config_store_dir=${quote(env.pnpmStore)}`} npm_config_ignore_scripts=true pnpm_config_ignore_scripts=true; ${command}`;
 
 // Undefined when no sandbox runs: the caller must not run the command.
 export const wrap = (

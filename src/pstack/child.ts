@@ -93,13 +93,33 @@ export const allowedFile = (brief: Brief, relative: string): boolean =>
   relative.startsWith(SCRATCH) ||
   brief.files.some((file) => globToRegExp(file).test(relative));
 
+const quote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
+
 const duKb = async (target: string): Promise<number | undefined> => {
   try {
-    const { stdout } = await run("du", ["-sk", target], {
-      timeout: DU_TIMEOUT_MS,
-    });
+    // node_modules is left out: pnpm fills it from the store, so its size is
+    // bounded by the lockfile and says nothing about runaway usage.
+    const { stdout } = await run(
+      "/bin/bash",
+      [
+        "-c",
+        `du -sk ${quote(target)} && find ${quote(target)} -name node_modules -prune -type d -exec du -sk {} +`,
+      ],
+      { timeout: DU_TIMEOUT_MS }
+    );
 
-    return Number(stdout.split(/\s/u)[0]);
+    const lines = stdout.trim().split("\n");
+    const total = Number(lines[0]?.split(/\s/u)[0]);
+
+    if (!Number.isFinite(total)) {
+      return undefined;
+    }
+
+    const modules = lines
+      .slice(1)
+      .reduce((sum, line) => sum + Number(line.split(/\s/u)[0]), 0);
+
+    return total >= modules ? total - modules : total;
   } catch {
     return undefined;
   }
