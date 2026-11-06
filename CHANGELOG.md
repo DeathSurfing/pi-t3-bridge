@@ -1,5 +1,9 @@
 # Change log
 
+## 0.8.2, 6 November 2026
+
+Version 0.8.2 closes a hole in the child sandbox. A delegated child whose brief missed a section or a header field ran with no sandbox and no limits, because the bridge treated it as the user's own session. Such a child could rewrite the parent's git hooks. Now every tool in that child is blocked, and the block lists what the brief is missing, so the parent can resend a complete one. A top-level session is never blocked, even when its first message starts with `# Task:`.
+
 ## 0.8.1, 6 November 2026
 
 Version 0.8.1 lets a delegated child run `pnpm install` and `git commit` in a pnpm and lefthook repo, under `bwrap` on Linux and `sandbox-exec` on macOS. Each child gets its own `XDG_RUNTIME_DIR` in the temp folder, where pnpm 12 takes its store lock. The sandbox can now write to the store that `pnpm store path` names for the workdir, and the child uses that store, so it shares the parent's store and does not build a second one in the workdir.
