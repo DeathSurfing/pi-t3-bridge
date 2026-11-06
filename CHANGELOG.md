@@ -1,5 +1,9 @@
 # Change log
 
+## 0.8.3, 6 November 2026
+
+Version 0.8.3 hardens the child sandbox from a large orchestration run. A bullet under "Files you may write" may now list several paths; every token with a slash or a glob counts. The disk limit no longer counts `node_modules`, which pnpm fills from the store, so a 500 MB limit no longer fails on a pnpm monorepo install. On Linux the child runs in its own PID namespace and cannot see or signal host processes, and anything a command starts in the background ends with that command. The child env now sets `TMPDIR`. Chrome, Electron and headless shells need `--no-sandbox` inside the sandbox, because their own namespace sandbox cannot nest under bwrap, and the sandbox already confines them; this is now documented, along with `PI_CODING_AGENT_DIR` for running `pi` inside a child.
+
 ## 0.8.2, 6 November 2026
 
 Version 0.8.2 closes a hole in the child sandbox. A delegated child whose brief missed a section or a header field ran with no sandbox and no limits, because the bridge treated it as the user's own session. Such a child could rewrite the parent's git hooks. Now every tool in that child is blocked, and the block lists what the brief is missing, so the parent can resend a complete one. A top-level session is never blocked, even when its first message starts with `# Task:`.
