@@ -121,6 +121,7 @@ export const appendLedger = (
 // One line per steer check, beside the ledger. It holds the verdict and never
 // transcript text. A log that cannot be written must not break a session.
 export const appendSteerLog = (line: {
+  readonly capped?: boolean;
   readonly error?: string;
   readonly fired?: readonly string[];
   readonly kind: string;

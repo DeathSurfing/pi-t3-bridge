@@ -587,8 +587,8 @@ test("a done verdict, a blocked verdict, and a weak early-stop verdict get no nu
   }
 });
 
-test("one prompt gets at most two nudges, and a new prompt starts the count again", async () => {
-  await arrange({ steer: "on" });
+test("one prompt gets one stop nudge, a held-back one is logged as capped, and a new prompt starts the count again", async () => {
+  const { log } = await arrange({ steer: "on" });
   const jev = scripted(GAVE_UP);
   const { faux, session } = await start("cap", jev.classify);
 
@@ -596,24 +596,31 @@ test("one prompt gets at most two nudges, and a new prompt starts the count agai
     faux.setResponses([
       quits("Next I'll patch a.ts."),
       quits("Next I'll patch b.ts."),
-      quits("Next I'll patch c.ts."),
     ]);
     await session.prompt("Patch everything.");
 
-    assert.equal(notesIn(session).length, 2);
-    assert.equal(assistantTexts(session).length, 3);
-    assert.equal(assistantTexts(session).at(-1), "Next I'll patch c.ts.");
-    assert.equal(jev.requests.length, 2, "the capped stop is not judged");
+    assert.equal(notesIn(session).length, 1);
+    assert.equal(assistantTexts(session).length, 2);
+    assert.equal(assistantTexts(session).at(-1), "Next I'll patch b.ts.");
+    assert.equal(jev.requests.length, 2, "the capped stop is judged");
+    const lines = await log();
+
+    assert.deepEqual(
+      lines.map(({ capped, nudged }) => ({ capped, nudged })),
+      [
+        { capped: false, nudged: true },
+        { capped: true, nudged: false },
+      ]
+    );
 
     faux.setResponses([
+      quits("Next I'll patch c.ts."),
       quits("Next I'll patch d.ts."),
-      quits("Next I'll patch e.ts."),
-      quits("Next I'll patch f.ts."),
     ]);
     await session.prompt("And the rest.");
 
-    assert.equal(notesIn(session).length, 4);
-    assert.equal(assistantTexts(session).length, 6);
+    assert.equal(notesIn(session).length, 2);
+    assert.equal(assistantTexts(session).length, 4);
   } finally {
     session.dispose();
   }
@@ -972,7 +979,7 @@ test("a thread T3 names as top level still gets the section nudge", async () => 
   }
 });
 
-test("a keep-going note and a section note share the cap of two", async () => {
+test("a keep-going note uses up the stop nudge, so a section note after it is held back", async () => {
   await arrange({ steer: "on" });
   const jev = scripted(GAVE_UP, needsSection);
 
@@ -984,16 +991,15 @@ test("a keep-going note and a section note share the cap of two", async () => {
     faux.setResponses([
       quits("Next I'll patch src/a.ts."),
       quits("Patched src/a.ts."),
-      quits("Patched src/a.ts. All done."),
     ]);
     await session.prompt("Patch the file.");
 
     assert.deepEqual(
       notesIn(session).map((note) => note.details.kind),
-      ["early", "handoff"]
+      ["early"]
     );
-    assert.equal(assistantTexts(session).length, 3);
-    assert.equal(jev.requests.length, 2, "the capped stop is not judged");
+    assert.equal(assistantTexts(session).length, 2);
+    assert.equal(jev.requests.length, 2, "the capped stop is judged");
   } finally {
     session.dispose();
   }
@@ -1153,7 +1159,7 @@ test("MAST 1.5 is noted when no stop nudge came before it", async () => {
   }
 });
 
-test("MAST notes do not use up the cap of two stop nudges", async () => {
+test("MAST notes do not use up the stop nudge", async () => {
   await arrange({ steer: "on" });
   const jev = scriptedWith([GAVE_UP], [{ 2.3: 0.9 }]);
   const { faux, session } = await start("mast-cap", jev.classify);
@@ -1165,14 +1171,13 @@ test("MAST notes do not use up the cap of two stop nudges", async () => {
       toolTurn(),
       quits("Next I'll patch a.ts."),
       quits("Next I'll patch b.ts."),
-      quits("Next I'll patch c.ts."),
     ]);
     await session.prompt("Patch everything.");
 
     assert.equal(mastNotesIn(session).length, 1);
-    assert.equal(notesIn(session).length, 2);
-    assert.equal(assistantTexts(session).at(-1), "Next I'll patch c.ts.");
-    assert.equal(jev.requests.length, 2, "the capped stop is not judged");
+    assert.equal(notesIn(session).length, 1);
+    assert.equal(assistantTexts(session).at(-1), "Next I'll patch b.ts.");
+    assert.equal(jev.requests.length, 2, "the capped stop is judged");
   } finally {
     session.dispose();
   }
