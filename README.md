@@ -230,7 +230,7 @@ To choose your own models, run the `setup-pstack` skill, which writes a model sh
 
 ### Limits for delegated children
 
-When the first message of a session is a complete pstack brief, the extension treats the session as a delegated child and holds it to the limits in the brief. The child can't lift the limits through anything it writes.
+When the first message of a session is a complete pstack brief, the extension treats the session as a delegated child and holds it to the limits in the brief. The child can't lift the limits through anything it writes. A T3-delegated child whose brief has a `# Task:` heading but misses a section or a header field gets every tool blocked, with a list of what is missing, so it never runs without the sandbox.
 
 ```mermaid
 sequenceDiagram
