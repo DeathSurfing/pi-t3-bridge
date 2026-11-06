@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -34,10 +34,17 @@ const isProbeFailure = compile(
   )
 ).check;
 
+// Settled once per child: its own XDG_RUNTIME_DIR, and the pnpm store it
+// shares with the parent.
+interface ChildEnv {
+  readonly pnpmStore: string | undefined;
+  readonly runtimeDir: string;
+}
+
 export type Sandbox =
-  | { kind: "bubblewrap"; bwrap: string }
-  | { kind: "off" }
-  | { kind: "sandbox-exec" }
+  | { kind: "bubblewrap"; bwrap: string; env: ChildEnv }
+  | { kind: "off"; env: ChildEnv }
+  | { kind: "sandbox-exec"; env: ChildEnv }
   | { kind: "unavailable"; reason: string };
 
 const quote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
@@ -50,8 +57,30 @@ export const real = (target: string): string => {
   }
 };
 
-// Tool caches and installs stay writable, so uv, npm and mise work.
-const cacheRoots = (): string[] => {
+// The store pnpm picks for this workdir outside the sandbox, from project and
+// user config alike. Undefined when pnpm isn't installed. A store at or above
+// home would open all of home, so it stays unbound.
+const pnpmStore = async (workdir: string): Promise<string | undefined> => {
+  try {
+    const { stdout } = await run("pnpm", ["store", "path"], {
+      cwd: workdir,
+      timeout: PROBE_TIMEOUT_MS,
+    });
+
+    const store = path.dirname(stdout.trim());
+    const fromHome = path.relative(store, homedir());
+
+    return path.isAbsolute(store) && fromHome.startsWith("..")
+      ? store
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+// Tool caches, installs and the pnpm store stay writable, so uv, npm, pnpm
+// and mise work.
+const cacheRoots = (store: string | undefined): string[] => {
   const home = homedir();
 
   return [
@@ -59,14 +88,19 @@ const cacheRoots = (): string[] => {
     path.join(home, ".npm"),
     path.join(home, ".local", "share", "uv"),
     path.join(home, ".local", "share", "mise"),
+    ...(store === undefined ? [] : [store]),
   ];
 };
 
-const writableRoots = (workdir: string, gitDir: string | undefined) =>
+const writableRoots = (
+  workdir: string,
+  gitDir: string | undefined,
+  store: string | undefined
+) =>
   [
     workdir,
     gitDir,
-    ...cacheRoots(),
+    ...cacheRoots(store),
     path.join(homedir(), "Library", "Caches"),
     "/private/var/folders",
     tmpdir(),
@@ -114,7 +148,8 @@ const bwrapArgs = (
   bwrap: string,
   command: string,
   workdir: string,
-  gitDir: string | undefined
+  gitDir: string | undefined,
+  store: string | undefined
 ): string[] => [
   bwrap,
   "--ro-bind",
@@ -125,7 +160,7 @@ const bwrapArgs = (
   "/dev",
   "--proc",
   "/proc",
-  ...existing(writableRoots(workdir, gitDir)).flatMap((root) =>
+  ...existing(writableRoots(workdir, gitDir, store)).flatMap((root) =>
     root === "/dev" ? [] : ["--bind", root, root]
   ),
   ...existing(
@@ -158,10 +193,18 @@ const probeBwrap = async (bwrap: string): Promise<string | undefined> => {
 
 // A missing root can't be bound, and a missing hooks directory could be
 // created by the child, so both are made on the host first. They are empty
-// directories, so git and the tools see no change.
-const prepareBinds = (gitDir: string | undefined): void => {
-  for (const root of cacheRoots()) {
-    mkdirSync(root, { recursive: true });
+// directories, so git and the tools see no change. A root the user can't
+// create stays unbound.
+const prepareBinds = (
+  gitDir: string | undefined,
+  store: string | undefined
+): void => {
+  for (const root of cacheRoots(store)) {
+    try {
+      mkdirSync(root, { recursive: true });
+    } catch {
+      continue;
+    }
   }
 
   if (gitDir !== undefined) {
@@ -169,17 +212,23 @@ const prepareBinds = (gitDir: string | undefined): void => {
   }
 };
 
+const childEnv = async (workdir: string): Promise<ChildEnv> => ({
+  pnpmStore: await pnpmStore(workdir),
+  runtimeDir: mkdtempSync(path.join(tmpdir(), "pi-t3-child-")),
+});
+
 // Run once per child, before its first command. "childSandbox": "off" in the
 // config wins on every platform.
 export const chooseSandbox = async (
+  workdir: string,
   gitDir: string | undefined
 ): Promise<Sandbox> => {
   if (readConfig().childSandbox === "off") {
-    return { kind: "off" };
+    return { env: await childEnv(workdir), kind: "off" };
   }
 
   if (process.platform === "darwin" && existsSync(SANDBOX)) {
-    return { kind: "sandbox-exec" };
+    return { env: await childEnv(workdir), kind: "sandbox-exec" };
   }
 
   if (process.platform !== "linux") {
@@ -204,10 +253,23 @@ export const chooseSandbox = async (
     return { kind: "unavailable", reason: problem };
   }
 
-  prepareBinds(gitDir);
+  const env = await childEnv(workdir);
 
-  return { bwrap, kind: "bubblewrap" };
+  prepareBinds(gitDir, env.pnpmStore);
+
+  return { bwrap, env, kind: "bubblewrap" };
 };
+
+// pnpm 12 takes its store lock in $XDG_RUNTIME_DIR, which the sandbox keeps
+// read-only, so each child gets its own. Each bwrap bind is its own mount, and
+// Linux refuses a hardlink between mounts, so pnpm would build a second store
+// in the workdir. Naming the store keeps the one pnpm picked for the parent,
+// and pnpm copies from it. Install scripts stay off, so a `prepare` such as `lefthook install`
+// doesn't fail on the read-only hooks. npm and yarn read npm_config_*, pnpm 11
+// and later read pnpm_config_*. npm also skips pre and post scripts of
+// `npm run` then.
+const exportEnv = (env: ChildEnv, command: string): string =>
+  `export XDG_RUNTIME_DIR=${quote(env.runtimeDir)}${env.pnpmStore === undefined ? "" : ` pnpm_config_store_dir=${quote(env.pnpmStore)}`} npm_config_ignore_scripts=true pnpm_config_ignore_scripts=true; ${command}`;
 
 // Undefined when no sandbox runs: the caller must not run the command.
 export const wrap = (
@@ -218,17 +280,29 @@ export const wrap = (
 ): string | undefined => {
   switch (sandbox?.kind) {
     case "sandbox-exec": {
-      return `${SANDBOX} -p ${quote(sandboxProfile(writableRoots(workdir, gitDir), gitDenies(gitDir)))} /bin/bash -c ${quote(command)}`;
+      return exportEnv(
+        sandbox.env,
+        `${SANDBOX} -p ${quote(sandboxProfile(writableRoots(workdir, gitDir, sandbox.env.pnpmStore), gitDenies(gitDir)))} /bin/bash -c ${quote(command)}`
+      );
     }
 
     case "bubblewrap": {
-      return bwrapArgs(sandbox.bwrap, command, workdir, gitDir)
-        .map(quote)
-        .join(" ");
+      return exportEnv(
+        sandbox.env,
+        bwrapArgs(
+          sandbox.bwrap,
+          command,
+          workdir,
+          gitDir,
+          sandbox.env.pnpmStore
+        )
+          .map(quote)
+          .join(" ")
+      );
     }
 
     case "off": {
-      return command;
+      return exportEnv(sandbox.env, command);
     }
 
     default: {

@@ -297,7 +297,7 @@ export const registerChild = (pi: ExtensionAPI): void => {
       state.gitDir = undefined;
     }
 
-    state.sandbox = await chooseSandbox(state.gitDir);
+    state.sandbox = await chooseSandbox(ctx.cwd, state.gitDir);
 
     state.baselineKb = await duKb(ctx.cwd);
 
