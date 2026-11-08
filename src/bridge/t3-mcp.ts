@@ -5,7 +5,9 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { readConfig } from "./config.ts";
+import { readT3Credential, writeT3Credential } from "./state.ts";
 import { insideT3 } from "./t3-http.ts";
+import { signInLocally, tokenRejected } from "./t3-sign-in.ts";
 
 const SERVER_NAME = "t3";
 const TOOL_PREFIX = `mcp__${SERVER_NAME}__`;
@@ -14,6 +16,10 @@ const DEFAULT_URL = "http://127.0.0.1:3773/mcp";
 const PROBE_TIMEOUT_MS = 1500;
 const REFRESH_INTERVAL_MS = 3000;
 const AUTH_FAILURE = /sign.?in|unauthori[sz]ed|\b401\b|authoriz/iu;
+
+// Sign in again a day before the token expires, so a session never starts
+// with a token that dies halfway through.
+const RENEW_BEFORE_MS = 24 * 60 * 60 * 1000;
 
 // T3 refuses these outside a T3 thread because they act as the calling thread.
 // Hiding them keeps the model from choosing a tool that cannot work here.
@@ -38,11 +44,12 @@ const hiddenThreadOnlyTools = Object.fromEntries(
 type T3McpState =
   | { readonly kind: "connecting" }
   | { readonly kind: "offline" }
-  | { readonly kind: "sign-in" }
+  | { readonly kind: "sign-in"; readonly failure: string | undefined }
   | { readonly kind: "connected"; readonly tools: number };
 
 interface T3McpObservation {
   readonly authFailed: boolean;
+  readonly signInFailure: string | undefined;
   readonly firstCheck: boolean;
   readonly liveTools: number;
   readonly reachable: boolean;
@@ -58,7 +65,7 @@ const deriveState = (observation: T3McpObservation): T3McpState => {
   }
 
   if (observation.authFailed || observation.liveTools === 0) {
-    return { kind: "sign-in" };
+    return { failure: observation.signInFailure, kind: "sign-in" };
   }
 
   return { kind: "connected", tools: observation.liveTools };
@@ -79,7 +86,9 @@ const statusText = (state: T3McpState): string => {
     }
 
     default: {
-      return `T3 MCP ○ not signed in, run /mcp login ${SERVER_NAME}`;
+      return state.failure === undefined
+        ? `T3 MCP ○ not signed in, run /mcp login ${SERVER_NAME}`
+        : `T3 MCP ○ sign-in failed: ${state.failure}`;
     }
   }
 };
@@ -113,14 +122,75 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
 
   const url = serverUrl();
 
-  pi.registerMcpServer(SERVER_NAME, {
-    description:
-      "T3 Code app tools: launch, steer, and wait on T3 threads (t3_thread_launch, t3_thread_send, t3_thread_wait), schedules, projects, queues, and pull request watching. Outside a T3 thread, list tools need a projectId from t3_project_list.",
-    toolExposure: hiddenThreadOnlyTools,
-    url,
-  });
+  // An Authorization header makes pi skip its browser OAuth. Without a token,
+  // as for a T3 server on another machine, pi falls back to that OAuth.
+  let registeredToken: string | undefined;
+
+  const register = (token?: string): void => {
+    registeredToken = token;
+    pi.registerMcpServer(SERVER_NAME, {
+      description:
+        "T3 Code app tools: launch, steer, and wait on T3 threads (t3_thread_launch, t3_thread_send, t3_thread_wait), schedules, projects, queues, and pull request watching. Outside a T3 thread, list tools need a projectId from t3_project_list.",
+      headers: token === undefined ? {} : { Authorization: `Bearer ${token}` },
+      toolExposure: hiddenThreadOnlyTools,
+      url,
+    });
+  };
 
   let authFailed = false;
+  let signInFailure: string | undefined;
+  let signingIn: Promise<void> | undefined;
+
+  const signInOnce = async (): Promise<void> => {
+    try {
+      const credential = await signInLocally(url);
+
+      writeT3Credential(credential);
+      authFailed = false;
+      signInFailure = undefined;
+      register(credential.token);
+    } catch (error) {
+      signInFailure = error instanceof Error ? error.message : String(error);
+      register();
+    } finally {
+      signingIn = undefined;
+    }
+  };
+
+  // Tool calls that fail at the same moment share one sign-in.
+  const signIn = (): Promise<void> => {
+    signingIn ??= signInOnce();
+
+    return signingIn;
+  };
+
+  const savedToken = (): string | undefined => {
+    const saved = readT3Credential(url);
+
+    return saved !== undefined && saved.expiresAt - Date.now() > RENEW_BEFORE_MS
+      ? saved.token
+      : undefined;
+  };
+
+  // Pi may load this extension more than once and drop the earlier copies, so
+  // the sign-in runs inside session_start, where this copy is the live one.
+  // Another session may have renewed the token since, so read it each time.
+  const connect = async (): Promise<void> => {
+    const token = savedToken();
+
+    if (token === undefined || (await tokenRejected(url, token))) {
+      await signIn();
+    } else if (token !== registeredToken) {
+      register(token);
+    }
+  };
+
+  const initialToken = savedToken();
+
+  if (initialToken !== undefined) {
+    register(initialToken);
+  }
+
   let firstCheck = true;
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -144,6 +214,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
       firstCheck,
       liveTools: liveTools(),
       reachable,
+      signInFailure,
     });
 
     firstCheck = false;
@@ -161,6 +232,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
   pi.on("session_start", async (_event, ctx) => {
     stopTimer();
     firstCheck = true;
+    await connect();
     await refresh(ctx);
 
     if (ctx.mode === "tui") {
@@ -181,6 +253,11 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
     }
 
     authFailed = event.isError && AUTH_FAILURE.test(textOf(event.content));
+
+    if (authFailed) {
+      await signIn();
+    }
+
     await refresh(ctx);
   });
 
