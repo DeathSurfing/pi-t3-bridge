@@ -15,7 +15,9 @@ const STATUS_KEY = "t3-mcp";
 const DEFAULT_URL = "http://127.0.0.1:3773/mcp";
 const PROBE_TIMEOUT_MS = 1500;
 const REFRESH_INTERVAL_MS = 3000;
-const AUTH_FAILURE = /sign.?in|unauthori[sz]ed|\b401\b|authoriz/iu;
+
+const AUTH_FAILURE =
+  /sign.?in|unauthori[sz]ed|\b401\b|authoriz|authenticat|invalid_mcp_credential/iu;
 
 // Sign in again a day before the token expires, so a session never starts
 // with a token that dies halfway through.
@@ -199,6 +201,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
   }
 
   let firstCheck = true;
+  let wasReachable = false;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const liveTools = (): number =>
@@ -215,6 +218,16 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
     }
 
     const reachable = await probeReachable(url);
+
+    // A sign-in that failed, e.g. because T3 was down when pi started, runs
+    // again when T3 comes back, so starting T3 later needs no pi restart.
+    // Only the change from down to up retries, so a sign-in that keeps
+    // failing doesn't mint a pairing code every few seconds.
+    if (reachable && !wasReachable && signInFailure !== undefined) {
+      await signIn();
+    }
+
+    wasReachable = reachable;
 
     const state = deriveState({
       authFailed,
