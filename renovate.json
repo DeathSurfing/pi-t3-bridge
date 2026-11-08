@@ -34,7 +34,7 @@
       "enabled": true,
       "groupName": "pi",
       "prBodyNotes": [
-        "Before merging: run `pi update`, then `npm ci && npm run check && npm run typecheck && npm test` on this branch. The tests load the Pi that `pi update` installed, and typecheck reads the new Pi types. The release notes above list new extension API features to adopt. Keep `@earendil-works/pi-schema` on the same version as Pi, because Pi validates tool arguments with it."
+        "Before merging: run `npm ci && npm run check && npm run typecheck && npm test` on this branch. The tests and typecheck load Pi from this branch's devDependencies. The release notes above list new extension API features to adopt. Keep `@earendil-works/pi-schema` on the same version as Pi, because Pi validates tool arguments with it."
       ]
     },
     {
@@ -42,7 +42,7 @@
       "enabled": true,
       "followTag": "nightly",
       "prBodyNotes": [
-        "Before merging: run this extension in T3 {{{newVersion}}} and check the bridge it depends on and T3's MCP tools (`src/t3-mcp.ts`). Then run `npm test`."
+        "Before merging: run this extension in T3 {{{newVersion}}} and check the bridge it depends on and T3's MCP tools (`src/bridge/t3-mcp.ts`). Then run `npm test`."
       ]
     },
     {

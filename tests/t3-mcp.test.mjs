@@ -1,32 +1,22 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import * as piSdk from "@earendil-works/pi-coding-agent";
 
 const extensionDir = path.dirname(import.meta.dirname);
 
-const installRoot =
-  process.env.PI_MANAGED_INSTALL_ROOT ??
-  path.join(homedir(), ".pi/agent/install");
-
-const versionText = await readFile(
-  path.join(installRoot, "current-version"),
-  "utf-8"
+const piRoot = path.dirname(
+  path.dirname(
+    fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))
+  )
 );
-
-const piRoot = path.join(
-  installRoot,
-  "releases",
-  versionText.trim(),
-  "node_modules/@earendil-works/pi-coding-agent"
-);
-
-const piSdk = await import(pathToFileURL(path.join(piRoot, "dist/index.js")));
 
 const { McpOAuthCredentialStore } = await import(
   pathToFileURL(path.join(piRoot, "dist/extensions/mcp/oauth.js"))
