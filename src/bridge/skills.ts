@@ -47,7 +47,7 @@ const readerVerb = ({ hiddenTools, selectedTools }: PromptTools): string => {
   return "load";
 };
 
-export const compactSkillCatalog = (
+const compactSkillCatalog = (
   skills: readonly CatalogSkill[],
   tools: PromptTools
 ): string => {

@@ -26,7 +26,7 @@ export interface BriefRules {
   >;
 }
 
-export const SECTIONS = [
+const SECTIONS = [
   "Goal",
   "Acceptance command",
   "Files you may write",
@@ -39,7 +39,7 @@ export const SECTIONS = [
 const TASK_HEADING = /^# Task:/mu;
 
 // The user's approval of reasoning above high, as a whole message or line.
-export const APPROVAL_LINE = /^\s*allow (?:xhigh|max)\b/imu;
+const APPROVAL_LINE = /^\s*allow (?:xhigh|max)\b/imu;
 
 // A command that changes the shared account state, where one can start: at the
 // start of a line, or after a space, quote or bracket. Inside a path such as
@@ -87,7 +87,7 @@ const listItems = (section: string | undefined): string[] =>
     })
     .filter((item) => item !== "");
 
-export const parseBrief = (text: string): Brief | undefined => {
+const parseBrief = (text: string): Brief | undefined => {
   const start = TASK_HEADING.exec(text);
 
   if (start === null) {
@@ -241,7 +241,7 @@ const fileProblems = (brief: Brief, rules: BriefRules): string[] => {
 
 // Everything wrong with a brief, as one line each, so the parent can fix all
 // of it in one go.
-export const briefProblems = (text: string, rules: BriefRules): string[] => {
+const briefProblems = (text: string, rules: BriefRules): string[] => {
   const problems = textProblems(text);
   const brief = parseBrief(text);
 

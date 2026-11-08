@@ -31,7 +31,7 @@ const fields = {
   steer: compile(SteerSchema),
 };
 
-export interface Config {
+interface Config {
   readonly bashTimeoutSeconds: number | undefined;
   readonly childSandbox: Static<typeof ChildSandboxSchema> | undefined;
   readonly classifierModel: string | undefined;
@@ -52,7 +52,7 @@ const EMPTY: Config = {
   steer: undefined,
 };
 
-export const configPath = (): string =>
+const configPath = (): string =>
   path.join(
     process.env.XDG_CONFIG_HOME?.trim() || path.join(homedir(), ".config"),
     "pi-t3",

@@ -1,49 +1,24 @@
 import assert from "node:assert/strict";
-import {
-  glob,
-  mkdtemp,
-  mkdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { glob, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { pathToFileURL } from "node:url";
+
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  SessionManager,
+  SettingsManager,
+  VERSION,
+} from "@earendil-works/pi-coding-agent";
 
 const testDir = import.meta.dirname;
 const extensionDir = path.dirname(testDir);
 const artifactDir = path.join(extensionDir, "artifacts");
 
-const installRoot =
-  process.env.PI_MANAGED_INSTALL_ROOT ??
-  path.join(homedir(), ".pi/agent/install");
-
-const versionText = await readFile(
-  path.join(installRoot, "current-version"),
-  "utf-8"
-);
-
-const version = versionText.trim();
-
-const piRoot = path.join(
-  installRoot,
-  "releases",
-  version,
-  "node_modules/@earendil-works/pi-coding-agent"
-);
-
-const {
-  createAgentSession,
-  DefaultResourceLoader,
-  SessionManager,
-  SettingsManager,
-} = await import(pathToFileURL(path.join(piRoot, "dist/index.js")));
-
 const evidence = {
   checks: [],
-  piVersion: version,
+  piVersion: VERSION,
   scope: "Implemented Pi extension behavior",
 };
 

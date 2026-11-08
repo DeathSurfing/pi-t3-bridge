@@ -6,7 +6,7 @@ const TIMEOUT_MS = 15_000;
 
 const PROTOCOL_VERSION = "2025-06-18";
 
-export type JsonValue =
+type JsonValue =
   | string
   | number
   | boolean

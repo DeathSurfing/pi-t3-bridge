@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 
-import { newWorld, piAi, startSession } from "./harness.mjs";
+import * as piAi from "@earendil-works/pi-ai";
+
+import { newWorld, startSession } from "./harness.mjs";
 
 const temporary = await mkdtemp(path.join(tmpdir(), "pi-t3-bridge-steer-"));
 

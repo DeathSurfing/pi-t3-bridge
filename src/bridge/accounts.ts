@@ -84,7 +84,7 @@ const isAccountEvent = compile(AccountEventSchema).check;
 
 type AccountEvent = Static<typeof AccountEventSchema>;
 
-export interface Accounts {
+interface Accounts {
   readonly delegated: readonly string[];
   readonly families: Readonly<Record<string, FamilyRecord>>;
   readonly watching: ReadonlyMap<string, string>;
@@ -174,7 +174,7 @@ export const accountLines = (
       return `${name}: ${exhaustedCause(record, name)}, since ${shortTime(record.since)}, until ${shortTime(resetTime(record))}.`;
     });
 
-export const recordFailure = (
+const recordFailure = (
   modelFamily: string,
   classified: Classified,
   source: "delegate" | "user"
@@ -236,7 +236,7 @@ const bridgeReader =
   };
 
 // A tool_result handler gets no ctx.executeTool, so it reads through T3 directly.
-export const httpReader: PageReader = async (params) => {
+const httpReader: PageReader = async (params) => {
   const read = await callT3Tool("t3_thread_read", { ...params });
 
   return threadRead.check(read) ? read : undefined;
@@ -313,7 +313,7 @@ const childOutcome = async (
   });
 };
 
-export const settleChild = async (
+const settleChild = async (
   pi: ExtensionAPI,
   read: PageReader,
   childThreadId: string,

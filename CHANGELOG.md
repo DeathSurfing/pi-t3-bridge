@@ -6,6 +6,10 @@ The README and the change log were rewritten in plain language, and the README n
 
 The notes in `brief.md` about the child sandbox moved from `pstack/` into `overlay/`, so `pstack/` holds the upstream text again and the next upstream merge won't conflict with them. Agents read the same notes as before.
 
+The tests load Pi from the project's `devDependencies`. Before, they read Pi from `~/.pi/agent/install`, which a Pi installed some other way, such as through mise, doesn't have, so every test file failed to start. The Linux test image no longer builds a copy of that folder.
+
+Stale files are gone: the request probe that only the removed bridge-trim test used, and a perf script that pointed at Pi 1.4.0. Twenty-six names that no other file imports are no longer exported.
+
 ## 0.8.3, 6 November 2026
 
 Version 0.8.3 fixes six problems that a large orchestration run found in the child sandbox, and it changes how often the stop checks send a note.

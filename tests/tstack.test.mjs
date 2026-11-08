@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { piSdk } from "./harness.mjs";
+import * as piSdk from "@earendil-works/pi-coding-agent";
 
 const extensionDir = path.dirname(import.meta.dirname);
 

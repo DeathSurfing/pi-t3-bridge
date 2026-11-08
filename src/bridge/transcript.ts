@@ -8,7 +8,7 @@ import type { Static } from "@earendil-works/pi-schema";
 
 import { registerUnlessTaken } from "./claim.ts";
 
-export const TranscriptSchema = obj(
+const TranscriptSchema = obj(
   {
     branchEntryIds: arr(str()),
     sessionFile: opt(str()),
@@ -17,9 +17,9 @@ export const TranscriptSchema = obj(
   { open: true }
 );
 
-export type Transcript = Static<typeof TranscriptSchema>;
+type Transcript = Static<typeof TranscriptSchema>;
 
-export const transcriptRef = (ctx: ExtensionContext): Transcript => ({
+const transcriptRef = (ctx: ExtensionContext): Transcript => ({
   branchEntryIds: ctx.sessionManager.getBranch().map((entry) => entry.id),
   sessionFile: ctx.sessionManager.getSessionFile(),
   sessionId: ctx.sessionManager.getSessionId(),

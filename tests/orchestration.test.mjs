@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, beforeEach, test } from "node:test";
 
+import * as piAi from "@earendil-works/pi-ai";
+
 import { classifyFailure } from "../src/bridge/failures.ts";
 import {
   brief,
@@ -16,7 +18,6 @@ import {
   liveCatalog,
   newWorld,
   onPi,
-  piAi,
   startSession,
 } from "./harness.mjs";
 

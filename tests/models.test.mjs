@@ -3,35 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { pathToFileURL } from "node:url";
 
+import * as piAi from "@earendil-works/pi-ai";
+import * as piSdk from "@earendil-works/pi-coding-agent";
 import { obj, opt, str, unknown } from "@earendil-works/pi-schema";
 
 const extensionDir = path.dirname(import.meta.dirname);
-
-const installRoot =
-  process.env.PI_MANAGED_INSTALL_ROOT ??
-  path.join(homedir(), ".pi/agent/install");
-
-const versionText = await readFile(
-  path.join(installRoot, "current-version"),
-  "utf-8"
-);
-
-const modulesRoot = path.join(
-  installRoot,
-  "releases",
-  versionText.trim(),
-  "node_modules/@earendil-works"
-);
-
-const piSdk = await import(
-  pathToFileURL(path.join(modulesRoot, "pi-coding-agent/dist/index.js"))
-);
-
-const piAi = await import(
-  pathToFileURL(path.join(modulesRoot, "pi-ai/dist/index.js"))
-);
 
 const liveCatalog = JSON.parse(
   await readFile(

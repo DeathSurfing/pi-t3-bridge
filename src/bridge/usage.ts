@@ -32,7 +32,7 @@ const NO_USAGE: Readonly<Usage> = {
   tokens: 0,
 };
 
-export const assistantMessages = (ctx: ExtensionContext): AssistantMessage[] =>
+const assistantMessages = (ctx: ExtensionContext): AssistantMessage[] =>
   ctx.sessionManager
     .getBranch()
     .flatMap((entry) =>
@@ -42,7 +42,7 @@ export const assistantMessages = (ctx: ExtensionContext): AssistantMessage[] =>
     );
 
 // Sessions written by older Pi versions can lack usage fields.
-export const sumUsage = (messages: readonly AssistantMessage[]): Usage => {
+const sumUsage = (messages: readonly AssistantMessage[]): Usage => {
   const sum = { ...NO_USAGE };
 
   for (const message of messages) {
