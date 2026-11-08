@@ -5,7 +5,7 @@ import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { compile, num, obj, str } from "@earendil-works/pi-schema";
+import { compile, num, obj, opt, str } from "@earendil-works/pi-schema";
 
 import type { T3Credential } from "./state.ts";
 
@@ -48,18 +48,53 @@ const isToken = compile(
 const t3Home = (): string =>
   process.env.T3CODE_HOME?.trim() || path.join(homedir(), ".t3");
 
+// Error messages reach the status line, and the text can hold a token or a
+// pairing code, so they never quote it. JSON.parse errors quote their input.
 const parse = <T>(
   text: string,
   check: (value: unknown) => value is T,
   what: string
 ): T => {
-  const value: unknown = JSON.parse(text);
+  let value: unknown;
+
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error(`${what} is not JSON.`);
+  }
 
   if (!check(value)) {
-    throw new Error(`${what} has an unexpected shape: ${text}`);
+    throw new Error(`${what} has an unexpected shape.`);
   }
 
   return value;
+};
+
+const isRefusal = compile(
+  obj(
+    {
+      error: opt(str()),
+      error_description: opt(str()),
+      message: opt(str()),
+    },
+    { open: true }
+  )
+).check;
+
+// T3 explains a refusal in one of these fields. An error body holds no
+// secret, but an HTML page would flood the status line, so take the field.
+const refusalReason = (text: string): string => {
+  try {
+    const body: unknown = JSON.parse(text);
+
+    if (isRefusal(body)) {
+      return body.error_description ?? body.message ?? body.error ?? "";
+    }
+  } catch {
+    // Not JSON, so there is no reason to show.
+  }
+
+  return "";
 };
 
 // The CLI must match the running server, so take the binary of the version
@@ -106,7 +141,11 @@ const request = async <T>(
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`T3 refused ${step} (${response.status}): ${text}`);
+    const reason = refusalReason(text);
+
+    throw new Error(
+      `T3 refused ${step} (${response.status})${reason === "" ? "." : `: ${reason}`}`
+    );
   }
 
   return parse(text, check, `T3's answer to ${step}`);

@@ -16,8 +16,10 @@ const DEFAULT_URL = "http://127.0.0.1:3773/mcp";
 const PROBE_TIMEOUT_MS = 1500;
 const REFRESH_INTERVAL_MS = 3000;
 
-const AUTH_FAILURE =
-  /sign.?in|unauthori[sz]ed|\b401\b|authoriz|authenticat|invalid_mcp_credential/iu;
+// Pi reports T3's 401 with the first text, and T3's body holds the second.
+// Wider words such as "authorize" also appear in ordinary tool errors, and
+// each match starts a sign-in that mints a new T3 session.
+const AUTH_FAILURE = /requires authentication|invalid_mcp_credential/iu;
 
 // Sign in again a day before the token expires, so a session never starts
 // with a token that dies halfway through.
@@ -144,25 +146,31 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
   let signingIn: Promise<void> | undefined;
 
   const signInOnce = async (): Promise<void> => {
+    let token: string | undefined;
+
     try {
       const credential = await signInLocally(url);
 
       signInFailure = undefined;
 
-      if (credential === undefined) {
-        register();
-
-        return;
+      if (credential !== undefined) {
+        writeT3Credential(credential);
+        authFailed = false;
+        ({ token } = credential);
       }
-
-      writeT3Credential(credential);
-      authFailed = false;
-      register(credential.token);
     } catch (error) {
       signInFailure = error instanceof Error ? error.message : String(error);
-      register();
     } finally {
       signingIn = undefined;
+    }
+
+    // Pi drops this copy of the extension on /reload or /new, and a dropped
+    // copy throws on register. The live copy signs in on its own
+    // session_start and reads the saved token, so nothing is lost.
+    try {
+      register(token);
+    } catch {
+      // Nothing to do in a dropped copy.
     }
   };
 
