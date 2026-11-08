@@ -1,6 +1,8 @@
 # Change log
 
-## Unreleased
+## 0.9.0, 8 November 2026
+
+GitHub Actions now runs the checks on pull requests and changes to main. The Linux sandbox checks run in Docker without privileged mode.
 
 The package is no longer published to npm, and 0.8.3 is the last npm release. Install it from GitHub with `pi install git:github.com/Snestra/pi-t3-bridge`. If you have the npm package, run `pi remove npm:pi-t3-bridge` first. `package.json` is marked private, so `npm publish` refuses to run.
 
