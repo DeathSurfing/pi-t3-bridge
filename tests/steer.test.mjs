@@ -16,14 +16,18 @@ const savedEnv = new Map(
   [
     "XDG_CONFIG_HOME",
     "XDG_STATE_HOME",
+    "T3CODE_HOME",
     "T3_MCP_URL",
     "T3_MCP_BEARER_TOKEN",
   ].map((key) => [key, process.env[key]])
 );
 
 // Tests run inside a T3 thread would otherwise ask the real T3 which thread
-// they are. A test that needs T3 starts its own stand-in.
+// they are, and a session outside one would sign in to the real T3 with its
+// CLI. A test that needs T3 starts its own stand-in.
 Reflect.deleteProperty(process.env, "T3_MCP_URL");
+
+process.env.T3CODE_HOME = path.join(temporary, "t3");
 
 Reflect.deleteProperty(process.env, "T3_MCP_BEARER_TOKEN");
 
