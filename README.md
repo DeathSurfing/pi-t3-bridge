@@ -52,7 +52,7 @@ pi install git:github.com/Snestra/pi-t3-bridge
 You can install a signed archive instead of the git package. You need [Packslip](https://packslip.dev/docs/install/), the GitHub CLI, and `jq`. Run these commands in an empty directory:
 
 ```bash
-version=0.9.0
+version=0.9.1
 tag="v$version"
 archive="pi-t3-bridge-$version.tar.gz"
 install_dir="$HOME/.local/share/pi-t3-bridge/$version"
