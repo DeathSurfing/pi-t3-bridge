@@ -7,6 +7,15 @@ import { GenericContainer, getContainerRuntimeClient } from "testcontainers";
 // The first build pulls the base image and runs npm ci.
 const BUILD_TIMEOUT_MS = 15 * 60_000;
 const RUN_TIMEOUT_MS = 5 * 60_000;
+const IMAGE_NAME = "pi-t3-bridge-linux-test";
+
+class BubblewrapContainer extends GenericContainer {
+  constructor() {
+    super(IMAGE_NAME);
+    this.hostConfig.MaskedPaths = [];
+    this.hostConfig.ReadonlyPaths = [];
+  }
+}
 
 const repoRoot = path.dirname(import.meta.dirname);
 
@@ -26,7 +35,7 @@ before(
     image = await GenericContainer.fromDockerfile(
       repoRoot,
       "tests/linux/Dockerfile"
-    ).build("pi-t3-bridge-linux-test", { deleteOnExit: false });
+    ).build(IMAGE_NAME, { deleteOnExit: false });
   },
   { timeout: BUILD_TIMEOUT_MS }
 );
@@ -59,9 +68,8 @@ test(
   "on Linux with bubblewrap, every child rule holds",
   { timeout: RUN_TIMEOUT_MS },
   async () => {
-    // bwrap needs a user namespace, which Docker's default seccomp and
-    // AppArmor profiles refuse.
-    const container = await image
+    // bwrap needs a user namespace and an unmasked proc to mount its own proc.
+    const container = await new BubblewrapContainer()
       .withUser("node")
       .withSecurityOpt("seccomp=unconfined", "apparmor=unconfined")
       .withCommand(["sleep", "infinity"])
