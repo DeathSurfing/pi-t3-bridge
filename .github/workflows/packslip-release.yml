@@ -1,0 +1,57 @@
+name: Signed release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Prepare the release archive
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.version' package.json)"
+          [[ "$version" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]]
+          [[ "$GITHUB_REF_NAME" == "v$version" ]]
+          archive="dist/pi-t3-bridge-$version.tar.gz"
+          mkdir -p dist
+          git archive --format=tar.gz --prefix=pi-t3-bridge/ HEAD > "$archive"
+          printf '[[artifact]]\npath = "%s"\nportable = true\nbin = []\n' "$archive" > "$RUNNER_TEMP/packslip-release.toml"
+          printf 'path=%s\nversion=%s\n' "$archive" "$version" >> "$GITHUB_OUTPUT"
+      - name: Sign the release
+        id: packslip
+        uses: jdx/packslip@44e50e5f64551234b4a382d991bd7f7f7d021d06
+        with:
+          artifacts: ${{ steps.archive.outputs.path }}
+          manifest: ${{ runner.temp }}/packslip-release.toml
+          upload: "false"
+      - name: Verify the signed archive
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.path }}
+          BUNDLE: ${{ steps.packslip.outputs.bundle }}
+          VERSION: ${{ steps.archive.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          identity="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/.github/workflows/packslip-release.yml@$GITHUB_REF"
+          packslip verify "$BUNDLE" --identity "$identity" --issuer https://token.actions.githubusercontent.com --artifact "$ARCHIVE" --json > "$RUNNER_TEMP/packslip-verified.json"
+          jq -e --arg project "github.com/$GITHUB_REPOSITORY" --arg version "$VERSION" --arg artifact "${ARCHIVE##*/}" '.project == $project and .version == $version and (.checked_artifacts | index($artifact) != null)' "$RUNNER_TEMP/packslip-verified.json"
+      - name: Upload the signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.archive.outputs.path }}
+          BUNDLE: ${{ steps.packslip.outputs.bundle }}
+        shell: bash
+        run: gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" "$BUNDLE" --repo "$GITHUB_REPOSITORY"
