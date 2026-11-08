@@ -1,6 +1,7 @@
 {
   "name": "pi-t3-bridge",
   "version": "0.8.3",
+  "private": true,
   "description": "Pi extension adapter for t3-pstack inside T3 Code.",
   "keywords": [
     "pi-extension",
@@ -19,27 +20,6 @@
   },
   "workspaces": [
     "pstack/skills/statechart/scripts"
-  ],
-  "files": [
-    "bridge.ts",
-    "pstack.ts",
-    "src",
-    "pstack",
-    "!pstack/.claude-plugin",
-    "!pstack/.codex-plugin",
-    "!pstack/assets",
-    "!pstack/hooks/*.json",
-    "!pstack/hooks/*.sh",
-    "!pstack/hooks/*.ps1",
-    "!pstack/**/test",
-    "!pstack/**/*.test.ts",
-    "!pstack/**/*.test-helper.ts",
-    "!pstack/**/test-utils",
-    "overlay",
-    "LICENSE",
-    "tstack.ts",
-    "tstack",
-    "CHANGELOG.md"
   ],
   "type": "module",
   "scripts": {

@@ -32,13 +32,20 @@ The Ubuntu `bubblewrap` package ships an AppArmor profile that lets `bwrap` run,
 
 ## Install
 
-Install the package with Pi:
+The package is only on GitHub, not on npm. Install it with Pi:
 
 ```bash
-pi install npm:pi-t3-bridge
+pi install git:github.com/Snestra/pi-t3-bridge
 ```
 
-Pi loads every extension in the package on the next start. To try the package for one session without saving it to your settings, run `pi -e npm:pi-t3-bridge`.
+Pi clones the repository, installs its dependencies, and loads every extension in the package on the next start. `pi update --extensions` moves the clone to the newest commit on `main`. To stay on a release instead, add its tag, e.g. `git:github.com/Snestra/pi-t3-bridge@v0.8.3`. To try the package for one session without saving it to your settings, run `pi -e git:github.com/Snestra/pi-t3-bridge`.
+
+If you installed the old npm package, swap it for the git one:
+
+```bash
+pi remove npm:pi-t3-bridge
+pi install git:github.com/Snestra/pi-t3-bridge
+```
 
 ## What is in the package
 
@@ -61,7 +68,12 @@ To load only some extensions, list the package in `~/.pi/agent/settings.json` in
 
 ```json
 {
-  "packages": [{ "source": "npm:pi-t3-bridge", "extensions": ["bridge.ts"] }]
+  "packages": [
+    {
+      "source": "git:github.com/Snestra/pi-t3-bridge",
+      "extensions": ["bridge.ts"]
+    }
+  ]
 }
 ```
 
