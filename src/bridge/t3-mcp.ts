@@ -145,9 +145,16 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
     try {
       const credential = await signInLocally(url);
 
+      signInFailure = undefined;
+
+      if (credential === undefined) {
+        register();
+
+        return;
+      }
+
       writeT3Credential(credential);
       authFailed = false;
-      signInFailure = undefined;
       register(credential.token);
     } catch (error) {
       signInFailure = error instanceof Error ? error.message : String(error);

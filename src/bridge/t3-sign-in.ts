@@ -63,20 +63,23 @@ const parse = <T>(
 };
 
 // The CLI must match the running server, so take the binary of the version
-// the server recorded, not whatever `t3` is on PATH.
-const localCli = (url: string): string => {
+// the server recorded, not whatever `t3` is on PATH. No T3 server on this
+// machine, or one at another address, means the CLI can't sign in to `url`.
+const localCli = (url: string): string | undefined => {
   const runtimeFile = path.join(t3Home(), "userdata", "server-runtime.json");
 
-  const runtime = parse(
-    readFileSync(runtimeFile, "utf-8"),
-    isRuntime,
-    runtimeFile
-  );
+  let text: string;
+
+  try {
+    text = readFileSync(runtimeFile, "utf-8");
+  } catch {
+    return undefined;
+  }
+
+  const runtime = parse(text, isRuntime, runtimeFile);
 
   if (runtime.origin !== new URL(url).origin) {
-    throw new Error(
-      `T3 on this machine serves ${runtime.origin}, not ${url}, so only browser sign-in works.`
-    );
+    return undefined;
   }
 
   return path.join(
@@ -140,8 +143,16 @@ export const tokenRejected = async (
   }
 };
 
-export const signInLocally = async (url: string): Promise<T3Credential> => {
+// Resolves to undefined when only a browser sign-in can reach `url`.
+export const signInLocally = async (
+  url: string
+): Promise<T3Credential | undefined> => {
   const cli = localCli(url);
+
+  if (cli === undefined) {
+    return undefined;
+  }
+
   const { origin } = new URL(url);
   const label = `pi on ${hostname()}`;
 
