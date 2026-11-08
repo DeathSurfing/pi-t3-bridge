@@ -148,6 +148,41 @@ export const appendSteerLog = (line: {
   }
 };
 
+// The bearer token the bridge signed in to T3's MCP server with. Only this
+// user may read the file, because the token can launch full-access threads.
+const T3CredentialSchema = obj(
+  { expiresAt: num(), token: str({ minLength: 1 }), url: str() },
+  { open: true }
+);
+
+const isT3Credential = compile(T3CredentialSchema).check;
+
+export type T3Credential = Static<typeof T3CredentialSchema>;
+
+const t3CredentialPath = (): string => path.join(stateDir(), "t3-mcp.json");
+
+export const readT3Credential = (url: string): T3Credential | undefined => {
+  try {
+    const parsed: unknown = JSON.parse(
+      readFileSync(t3CredentialPath(), "utf-8")
+    );
+
+    return isT3Credential(parsed) && parsed.url === url ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const writeT3Credential = (credential: T3Credential): void => {
+  mkdirSync(stateDir(), { recursive: true });
+
+  const target = t3CredentialPath();
+  const temporary = `${target}.${process.pid}.tmp`;
+
+  writeFileSync(temporary, `${JSON.stringify(credential)}\n`, { mode: 0o600 });
+  renameSync(temporary, target);
+};
+
 const LedgerLineSchema = obj(
   {
     cacheRead: opt(num()),

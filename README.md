@@ -106,13 +106,18 @@ on(session start)
   if Pi runs inside a T3 thread
     use the tools T3 already gives the thread
   else
-    connect to http://127.0.0.1:3773/mcp
+    if the saved token is missing, rejected, or expires within a day
+      sign in with the t3 CLI of the running server, no browser
+      save the token in ~/.local/state/pi-t3/t3-mcp.json
+    connect to http://127.0.0.1:3773/mcp with that token
     hide the tools that only work inside a T3 thread
     every 3 seconds, update the status bar
       "connected, N tools"
       "offline, start T3 Code"
-      "not signed in, run /mcp login t3"
+      "sign-in failed: <reason>"
 ```
+
+The bridge signs in on its own. The T3 CLI makes a one-time pairing code, and T3's sign-in endpoints take that code in place of a browser approval. The token lasts 30 days and has full access, the same as approving in the browser, because anyone who can run the CLI already owns the server. When `mcpUrl` points at a T3 server on another machine, the local CLI can't sign in there, so Pi falls back to `/mcp login t3`.
 
 ### Usage limits and resume
 

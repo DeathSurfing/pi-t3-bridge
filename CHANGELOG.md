@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Pi in a terminal signs in to T3's MCP server by itself. Before, it asked you to approve a sign-in page at `127.0.0.1:3773`, which never loads when your browser runs on another machine than T3. The bridge now gets a one-time pairing code from the running server's `t3` CLI, trades it for a 30-day token, and saves the token in `~/.local/state/pi-t3/t3-mcp.json`. It signs in again when the token is rejected or expires within a day. A T3 server on another machine still uses the browser sign-in.
+
 The README and the change log were rewritten in plain language, and the README now has a section on the child sandbox with a tree of the folders a child can write.
 
 The notes in `brief.md` about the child sandbox moved from `pstack/` into `overlay/`, so `pstack/` holds the upstream text again and the next upstream merge won't conflict with them. Agents read the same notes as before.
