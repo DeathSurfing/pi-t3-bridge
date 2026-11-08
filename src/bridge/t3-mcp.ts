@@ -129,6 +129,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
   // An Authorization header makes pi skip its browser OAuth. Without a token,
   // as for a T3 server on another machine, pi falls back to that OAuth.
   let registeredToken: string | undefined;
+  let registered = false;
 
   const register = (token?: string): void => {
     registeredToken = token;
@@ -139,11 +140,13 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
       toolExposure: hiddenThreadOnlyTools,
       url,
     });
+    registered = true;
   };
 
   let authFailed = false;
   let signInFailure: string | undefined;
   let signingIn: Promise<void> | undefined;
+  let needsLocalDiscovery = false;
 
   const signInOnce = async (): Promise<void> => {
     let token: string | undefined;
@@ -152,6 +155,15 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
       const credential = await signInLocally(url);
 
       signInFailure = undefined;
+      needsLocalDiscovery = credential === undefined;
+
+      if (
+        credential === undefined &&
+        registered &&
+        registeredToken === undefined
+      ) {
+        return;
+      }
 
       if (credential !== undefined) {
         writeT3Credential(credential);
@@ -159,6 +171,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
         ({ token } = credential);
       }
     } catch (error) {
+      needsLocalDiscovery = false;
       signInFailure = error instanceof Error ? error.message : String(error);
     } finally {
       signingIn = undefined;
@@ -227,11 +240,27 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
 
     const reachable = await probeReachable(url);
 
-    // A sign-in that failed, e.g. because T3 was down when pi started, runs
-    // again when T3 comes back, so starting T3 later needs no pi restart.
-    // Only the change from down to up retries, so a sign-in that keeps
-    // failing doesn't mint a pairing code every few seconds.
-    if (reachable && !wasReachable && signInFailure !== undefined) {
+    const cameOnline = reachable && !wasReachable;
+
+    const reconnectSavedToken =
+      cameOnline && registeredToken !== undefined && liveTools() === 0;
+
+    if (reconnectSavedToken) {
+      const token = registeredToken;
+
+      await connect();
+
+      if (registeredToken === token) {
+        pi.unregisterMcpServer(SERVER_NAME);
+        register(token);
+      }
+    }
+
+    if (
+      reachable &&
+      (needsLocalDiscovery ||
+        (cameOnline && !reconnectSavedToken && signInFailure !== undefined))
+    ) {
       await signIn();
     }
 
@@ -239,7 +268,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
 
     const state = deriveState({
       authFailed,
-      firstCheck,
+      firstCheck: firstCheck || cameOnline,
       liveTools: liveTools(),
       reachable,
       signInFailure,
@@ -260,6 +289,7 @@ export const registerT3Mcp = (pi: ExtensionAPI): void => {
   pi.on("session_start", async (_event, ctx) => {
     stopTimer();
     firstCheck = true;
+    wasReachable = ctx.hasUI && (await probeReachable(url));
     await connect();
     await refresh(ctx);
 
