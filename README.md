@@ -47,6 +47,32 @@ pi remove npm:pi-t3-bridge
 pi install git:github.com/Snestra/pi-t3-bridge
 ```
 
+### Verify a release archive
+
+You can install a signed archive instead of the git package. You need [Packslip](https://packslip.dev/docs/install/), the GitHub CLI, and `jq`. Run these commands in an empty directory:
+
+```bash
+version=0.9.1
+tag="v$version"
+archive="pi-t3-bridge-$version.tar.gz"
+install_dir="$HOME/.local/share/pi-t3-bridge/$version"
+gh release download "$tag" --repo Snestra/pi-t3-bridge --pattern "$archive" --pattern packslip.sigstore.json &&
+packslip verify packslip.sigstore.json \
+  --identity "https://github.com/Snestra/pi-t3-bridge/.github/workflows/packslip-release.yml@refs/tags/$tag" \
+  --issuer https://token.actions.githubusercontent.com \
+  --artifact "$archive" --json > packslip-verified.json &&
+jq -e --arg version "$version" --arg archive "$archive" \
+  '.project == "github.com/Snestra/pi-t3-bridge" and .version == $version and (.checked_artifacts | index($archive) != null)' \
+  packslip-verified.json &&
+mkdir -p "$(dirname "$install_dir")" &&
+mkdir "$install_dir" &&
+tar -xzf "$archive" -C "$install_dir" &&
+(cd "$install_dir/pi-t3-bridge" && npm install --omit=dev --legacy-peer-deps --no-audit --no-fund) &&
+pi install "$install_dir/pi-t3-bridge"
+```
+
+Packslip checks the archive, not the dependencies npm downloads. Pi does not update local packages. To update, verify and install the new archive, then remove the old local package with `pi remove`. Pi treats the new path as a separate package, so it does not show the old path's changelog updates.
+
 ## What is in the package
 
 The package has three Pi extensions, and you can turn off any of them. No extension needs another one to be loaded, although `pstack.ts` reuses code from `src/bridge`.

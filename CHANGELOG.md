@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.1, 8 November 2026
+
+GitHub Releases now provides an optional archive signed with Packslip. The README explains how to verify and install the archive. The existing git install is unchanged.
+
 ## 0.9.0, 8 November 2026
 
 GitHub Actions now runs the checks on pull requests and changes to main. The Linux sandbox checks run in Docker without privileged mode.
