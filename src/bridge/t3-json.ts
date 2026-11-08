@@ -7,7 +7,7 @@ const isResultEnvelope = compile(
 
 const isTextPart = compile(obj({ text: str() }, { open: true })).check;
 
-export interface ToolOutput {
+interface ToolOutput {
   readonly content: readonly unknown[];
   readonly structuredContent?: unknown;
 }

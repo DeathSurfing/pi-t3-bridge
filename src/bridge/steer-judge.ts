@@ -40,7 +40,7 @@ const StopKindSchema = oneOf([
   "gave_up_midway",
 ]);
 
-export type StopKind = Static<typeof StopKindSchema>;
+type StopKind = Static<typeof StopKindSchema>;
 
 export type StopVerdict =
   | {
@@ -473,7 +473,7 @@ export const mastModes = (): readonly MastMode[] => readMast().modes;
 // Completed turns between MAST checks.
 export const mastEvery = (): number => readMast().every;
 
-export type MastVerdict =
+type MastVerdict =
   | { readonly probabilities: Readonly<Record<string, number>> }
   | { readonly error: string };
 

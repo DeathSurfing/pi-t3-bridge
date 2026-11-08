@@ -3,13 +3,13 @@
 // T3 titles only some quota failures "Usage limit reached", and labels the rest,
 // such as ChatGPT's, "Provider error", so the message decides.
 
-export interface Failure {
+interface Failure {
   readonly class?: string | null;
   readonly message: string;
   readonly resetAt?: string | null;
 }
 
-export type FailureKind = "exhausted" | "unhealthy" | "other";
+type FailureKind = "exhausted" | "unhealthy" | "other";
 
 export interface Classified {
   readonly kind: FailureKind;
@@ -19,7 +19,7 @@ export interface Classified {
 // cliproxy reports a family with no healthy account as auth_unavailable, most
 // often after an upstream overload. It recovers on its own, so the family
 // waits this long instead of until the user reports recovery.
-export const UNHEALTHY_MS = 15 * 60_000;
+const UNHEALTHY_MS = 15 * 60_000;
 
 const EXHAUSTED =
   /usage limit|quota exhausted|rate limit reached|usage window resets/iu;

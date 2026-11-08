@@ -38,7 +38,7 @@ const OverlayManifestSchema = obj(
 
 const isOverlayManifest = compile(OverlayManifestSchema).check;
 
-export type OverlayManifest = Static<typeof OverlayManifestSchema>;
+type OverlayManifest = Static<typeof OverlayManifestSchema>;
 
 const TEXT_SUFFIX = ".md";
 const COPIED_ENTRIES = ["skills", "agents", "models.json"] as const;

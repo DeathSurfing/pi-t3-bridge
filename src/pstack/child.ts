@@ -89,7 +89,7 @@ const globToRegExp = (glob: string): RegExp => {
   return new RegExp(`^${source}/?$`, "u");
 };
 
-export const allowedFile = (brief: Brief, relative: string): boolean =>
+const allowedFile = (brief: Brief, relative: string): boolean =>
   relative.startsWith(SCRATCH) ||
   brief.files.some((file) => globToRegExp(file).test(relative));
 

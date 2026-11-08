@@ -484,7 +484,7 @@ const findRole = (policy: Policy, roleName: string): Role => {
   return role;
 };
 
-export type JobSize = "S" | "M" | "L";
+type JobSize = "S" | "M" | "L";
 
 const tierOf = (policy: Policy, model: string): Complexity | undefined => {
   const sizes = policy.routing.families[family(model)];
